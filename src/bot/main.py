@@ -45,7 +45,7 @@ bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTM
 dp = Dispatcher(storage=MemoryStorage())
 router = Router()
 
-feed = PriceFeed(geckoterminal_pool_address=TSAR_PRIMARY_POOL, manual_rate=1.0)
+feed = PriceFeed(token_pool=TSAR_PRIMARY_POOL, manual_rate=1.0)
 
 
 class WithdrawForm(StatesGroup):
