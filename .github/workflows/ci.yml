@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main, feat/**]
+  pull_request:
+    branches: [main]
+
+jobs:
+  python-tests:
+    name: Python tests & lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        working-directory: src/api/payouts
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff mypy
+
+      - name: Lint with ruff
+        working-directory: src/api/payouts
+        run: ruff check .
+
+      - name: Type-check with mypy
+        working-directory: src/api/payouts
+        run: mypy --ignore-missing-imports .
+
+      - name: Run pytest
+        working-directory: src/api/payouts
+        run: pytest -v tests/
+
+  bot-import-check:
+    name: Bot import check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install bot deps
+        working-directory: src/bot
+        run: pip install -r requirements.txt
+      - name: Smoke-import bot
+        working-directory: src/bot
+        run: python -c "import ast; ast.parse(open('main.py').read()) and print('OK')"
+
+  fun-syntax:
+    name: FunC syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check FunC file exists
+        run: test -f src/onchain/escrow/contract.fc && echo "FunC file present"

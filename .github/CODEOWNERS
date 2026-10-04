@@ -1,0 +1,11 @@
+# Default owners для всего
+* @BAALkoka
+
+# Безопасность
+/src/onchain/escrow/ @BAALkoka
+
+# Backend
+/src/api/ @BAALkoka
+
+# Bot
+/src/bot/ @BAALkoka
