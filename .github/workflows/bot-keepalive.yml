@@ -1,0 +1,37 @@
+name: tsar-bot-keepalive
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *'
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deps
+        run: |
+          pip install -q aiogram==3.13.1 httpx==0.27.0 pydantic==2.9.0
+
+      - name: Run bot (auto-restart on crash)
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TSAR_PRIMARY_POOL: EQBfclRZ2puWZvqy85DbMhKnqZh2386mxrOKki8GZo3YDgq4
+          TSAR_MASTER: EQC5D3XIrc777bcr8EOQ2_ZBMPuePUqT-zzWTr9-pJEoe7uf
+          USD_RUB_FALLBACK: '90.0'
+        run: |
+          while true; do
+            echo ">>> Bot started: $(date)"
+            PYTHONPATH=src python -m bot.main || echo ">>> Bot crashed with code $?"
+            echo ">>> Restarting in 5s..."
+            sleep 5
+          done
