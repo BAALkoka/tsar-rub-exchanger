@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: tsar-exchanger-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: TSAR_PRIMARY_POOL
+        value: "EQBfclRZ2puWZvqy85DbMhKnqZh2386mxrOKki8GZo3YDgq4"
+      - key: TSAR_MASTER
+        value: "EQC5D3XIrc777bcr8EOQ2_ZBMPuePUqT-zzWTr9-pJEoe7uf"
+      - key: WEB3_RA_POOL
+        value: "EQDNEhHhMqBnnh-4U-0EBGERQJpce1iZ4p5Ofz3Bci47ypSW"
+      - key: WEB3_RA_MASTER
+        value: "EQBrCYk8nNCwiEarsC9pgQ0LxvwFGKrJwGhHgarlvyMf0Ppp"
+      - key: USD_RUB_FALLBACK
+        value: "90.0"
