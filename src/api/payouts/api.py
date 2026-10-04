@@ -1,19 +1,16 @@
 from __future__ import annotations
 import logging
-import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from .config import TSAR_MASTER, TSAR_PRIMARY_POOL, USD_RUB_FALLBACK
-from .price_feed import PriceFeed, PriceUnavailable
+from .config import TSAR_MASTER, TSAR_PRIMARY_POOL
+from .price_feed import PriceFeed
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tsar.api")
 
 app = FastAPI(title="Tsar API", version="1.0.0")
-
-# Создаём feed один раз
 feed = PriceFeed(geckoterminal_pool_address=TSAR_PRIMARY_POOL, manual_rate=1.0)
 
 
