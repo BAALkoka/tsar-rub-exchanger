@@ -1,7 +1,7 @@
 """Telegram-бот обменника ЦАРЬ -> RUB.
 
 Поддерживает 3 серии ЦАРЬ через inline-кнопки:
-  - BAAL_RA (основной, АНО ЦЕНТР БЛИЗНЕЦЫ)
+  - BAAL_RA (основной)
   - GEMINI (Царь Гемини)
   - CROWN  (Царь с коронкой)
 """
@@ -10,7 +10,6 @@ import asyncio
 import logging
 import os
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -29,299 +28,164 @@ from aiogram.types import (
     CallbackQuery,
 )
 
-from api.payouts.config import TSAR_MASTER
-from api.payouts.price_feed import PriceFeed
-from api.payouts.sbp_adapter import SBPBridge
-from api.payouts.site_meta import EMITTER_SITE_URL
 from api.payouts.tokens import TOKENS, DEFAULT_TOKEN, get_token, list_tokens
-from integrations.sbp.tinkoff import TinkoffSBPClient
+from api.payouts.config import TSAR_MASTER, TSAR_PRIMARY_POOL, USD_RUB_FALLBACK
+from api.payouts.price_feed import PriceFeed
 
-logger = logging.getLogger(__name__)
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+SUPPORT_HANDLE = "@BAAL_NIK"
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("tsar.bot")
+
 if not BOT_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN не задан")
 
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+dp = Dispatcher(storage=MemoryStorage())
+router = Router()
 
-class WithdrawFSM(StatesGroup):
-    waiting_amount = State()
-    waiting_address = State()
-
-
-router = Router(name="main")
-
-_user_token: dict[int, str] = {}
-_feed_cache: dict[str, PriceFeed] = {}
-_bridge: SBPBridge | None = None
+feed = PriceFeed(geckoterminal_pool_address=TSAR_PRIMARY_POOL, manual_rate=1.0)
 
 
-def get_feed(token_code: str) -> PriceFeed:
-    if token_code not in _feed_cache:
-        tok = get_token(token_code)
-        _feed_cache[token_code] = PriceFeed(token_master=tok.master, token_pool=tok.pool)
-    return _feed_cache[token_code]
+class WithdrawForm(StatesGroup):
+    token_slug = State()
+    amount = State()
+    card = State()
+    confirm = State()
 
 
-def get_bridge() -> SBPBridge:
-    global _bridge
-    if _bridge is None:
-        tk = os.environ.get("TINKOFF_TERMINAL_KEY")
-        pw = os.environ.get("TINKOFF_PASSWORD")
-        tinkoff = TinkoffSBPClient(terminal_key=tk, password=pw) if tk and pw else None
-        _bridge = SBPBridge(tinkoff=tinkoff)
-    return _bridge
-
-
-def current_token(user_id: int):
-    code = _user_token.get(user_id, DEFAULT_TOKEN)
-    return get_token(code), code
-
-
-def tokens_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    """Кнопки для выбора токена + действия."""
-    cur_code = _user_token.get(user_id, DEFAULT_TOKEN)
-    rows = []
+def main_menu() -> InlineKeyboardMarkup:
+    buttons = []
     for t in list_tokens():
-        mark = "✅ " if t.code == cur_code else "  "
-        rows.append([InlineKeyboardButton(
-            text=f"{mark}{t.emoji} {t.symbol} — {t.name}",
-            callback_data=f"tok:{t.code}",
-        )])
-    rows.append([
-        InlineKeyboardButton(text="💱 Курс", callback_data="act:quote"),
-        InlineKeyboardButton(text="💸 Вывести", callback_data="act:withdraw"),
-    ])
-    rows.append([InlineKeyboardButton(text="📖 Справка", callback_data="act:help")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def action_keyboard(token_code: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💱 Курс", callback_data=f"act:quote:{token_code}")],
-        [InlineKeyboardButton(text="💸 Вывести", callback_data=f"act:withdraw:{token_code}")],
-        [InlineKeyboardButton(text="🔙 Назад к выбору токена", callback_data="act:back")],
-    ])
+        buttons.append([InlineKeyboardButton(text=f"{t.symbol} {t.name}", callback_data=f"token:{t.slug}")])
+    buttons.append([InlineKeyboardButton(text="💱 Курс", callback_data="rate")])
+    buttons.append([InlineKeyboardButton(text="📊 Балансы пулов", callback_data="pools")])
+    buttons.append([InlineKeyboardButton(text="🆘 Поддержка", callback_data="support")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
-    bridge = get_bridge()
-    sbp_ready = bridge.tinkoff is not None
-    tok, _ = current_token(message.from_user.id if message.from_user else 0)
     await message.answer(
-        f"👑 <b>ЦАРЬ → RUB</b>\n\n"
-        f"Текущий токен: <b>{tok.symbol}</b>\n"
-        f"SBP: {'✅ подключены' if sbp_ready else '⚠️ ручной режим'}\n\n"
-        f"<b>Выбери серию ЦАРЬ для обмена:</b>",
-        parse_mode=ParseMode.HTML,
-        reply_markup=tokens_keyboard(message.from_user.id if message.from_user else 0),
-    )
-
-
-@router.message(Command("tokens"))
-async def cmd_tokens(message: Message):
-    await message.answer(
-        "👑 <b>Все серии ЦАРЬ</b>\n\nВыбери нужную:",
-        parse_mode=ParseMode.HTML,
-        reply_markup=tokens_keyboard(message.from_user.id if message.from_user else 0),
-    )
-
-
-@router.message(Command("quote"))
-async def cmd_quote(message: Message):
-    tok, code = current_token(message.from_user.id if message.from_user else 0)
-    feed = get_feed(code)
-    q = await feed.get_rate()
-    await message.answer(
-        f"💱 <b>Курс {tok.symbol}</b>\n\n"
-        f"1 токен ≈ <b>{q.rate:.2f} ₽</b>\n"
-        f"Источник: {q.source}\n"
-        f"Возраст: {int(q.age_sec)} сек\n\n"
-        f"<i>Минималка: 250 000 токенов</i>",
-        parse_mode=ParseMode.HTML,
-        reply_markup=action_keyboard(code),
-    )
-
-
-@router.message(Command("withdraw"))
-async def cmd_withdraw(message: Message, state: FSMContext):
-    tok, _ = current_token(message.from_user.id if message.from_user else 0)
-    await state.set_state(WithdrawFSM.waiting_amount)
-    await message.answer(
-        f"💸 Сколько <b>{tok.symbol}</b> обменять?\n"
-        f"Минимум: 250 000\n\n"
-        f"Сменить токен: /tokens",
-        parse_mode=ParseMode.HTML,
+        "👑 <b>ЦАРЬ Обменник</b>\n\n"
+        "Обмен токенов ЦАРЬ → RUB → вывод на карту.\n\n"
+        "Выбери токен:",
+        reply_markup=main_menu(),
     )
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
-        "📖 <b>Справка</b>\n\n"
-        "<b>Команды:</b>\n"
-        "/quote — курс\n/tokens — все серии (с кнопками)\n"
-        "/withdraw — вывод\n/help — справка\n\n"
-        "<b>Лимиты:</b>\n"
-        "• До 5 000 ₽ — без KYC\n"
-        "• 5 000–50 000 ₽ — паспорт\n"
-        "• Свыше 50 000 ₽ — полный KYC\n\n"
-        "<b>Поддержка:</b> @BAAL_NIK_2505lis\n\n"
-        f"<b>Эмитент:</b> {EMITTER_SITE_URL}\n"
-        f"<b>Мастер (основной):</b> <code>{TSAR_MASTER}</code>",
-        parse_mode=ParseMode.HTML,
-        reply_markup=tokens_keyboard(message.from_user.id if message.from_user else 0),
+        "<b>Помощь</b>\n\n"
+        "/start — главное меню\n"
+        "/rate — текущий курс\n"
+        "/withdraw — вывод средств\n"
+        "/help — эта справка\n\n"
+        f"<b>Поддержка:</b> {SUPPORT_HANDLE}\n\n"
+        "<b>Минимальная сумма:</b> 250 000 ЦАРЬ\n"
+        "<b>Комиссия:</b> 0.25%"
     )
 
 
-@router.callback_query(F.data.startswith("tok:"))
-async def on_token_pick(cb: CallbackQuery):
-    code = cb.data.split(":", 1)[1].upper()
-    if code not in TOKENS:
-        await cb.answer("❌ Неизвестный токен")
-        return
-    uid = cb.from_user.id
-    _user_token[uid] = code
-    tok = get_token(code)
-    await cb.answer(f"Токен: {tok.symbol}")
-    await cb.message.answer(
-        f"✅ Токен: <b>{tok.symbol}</b> ({tok.code})\n"
-        f"Мастер: <code>{tok.master}</code>\n\n"
-        f"Что дальше?",
-        parse_mode=ParseMode.HTML,
-        reply_markup=action_keyboard(code),
-    )
-
-
-@router.callback_query(F.data.startswith("act:quote"))
-async def on_quote_btn(cb: CallbackQuery):
-    parts = cb.data.split(":")
-    code = parts[2] if len(parts) > 2 else _user_token.get(cb.from_user.id, DEFAULT_TOKEN)
-    if code not in TOKENS:
-        code = DEFAULT_TOKEN
-    tok = get_token(code)
-    feed = get_feed(code)
-    q = await feed.get_rate()
-    await cb.answer()
-    await cb.message.answer(
-        f"💱 <b>{tok.symbol}</b>\n"
-        f"1 ≈ <b>{q.rate:.2f} ₽</b>\n"
-        f"Источник: {q.source}",
-        parse_mode=ParseMode.HTML,
-        reply_markup=action_keyboard(code),
-    )
-
-
-@router.callback_query(F.data.startswith("act:withdraw"))
-async def on_withdraw_btn(cb: CallbackQuery, state: FSMContext):
-    parts = cb.data.split(":")
-    code = parts[2] if len(parts) > 2 else _user_token.get(cb.from_user.id, DEFAULT_TOKEN)
-    if code not in TOKENS:
-        code = DEFAULT_TOKEN
-    tok = get_token(code)
-    _user_token[cb.from_user.id] = code
-    await state.set_state(WithdrawFSM.waiting_amount)
-    await cb.answer()
-    await cb.message.answer(
-        f"💸 Сколько <b>{tok.symbol}</b> обменять?\nМинимум: 250 000",
-        parse_mode=ParseMode.HTML,
-    )
-
-
-@router.callback_query(F.data == "act:back")
-async def on_back(cb: CallbackQuery):
-    await cb.answer()
-    await cb.message.answer(
-        "👑 Выбери токен:",
-        parse_mode=ParseMode.HTML,
-        reply_markup=tokens_keyboard(cb.from_user.id),
-    )
-
-
-@router.callback_query(F.data == "act:help")
-async def on_help_btn(cb: CallbackQuery):
-    await cb.answer()
-    await cb.message.answer(
-        "📖 <b>Справка</b>\n\n"
-        "Команды: /quote /tokens /withdraw /help\n"
-        f"Эмитент: {EMITTER_SITE_URL}\n"
-        "Поддержка: @BAAL_NIK_2505lis",
-        parse_mode=ParseMode.HTML,
-    )
-
-
-@router.message(WithdrawFSM.waiting_amount)
-async def fsm_amount(message: Message, state: FSMContext):
-    tok, code = current_token(message.from_user.id if message.from_user else 0)
-    text = (message.text or "").replace(" ", "").replace(",", ".")
+@router.message(Command("rate"))
+async def cmd_rate(message: Message):
     try:
-        amount = float(text)
-    except ValueError:
-        await message.answer("❌ Введи число")
-        return
-    if amount < 250_000:
-        await message.answer("❌ Минимум 250 000")
-        return
-    feed = get_feed(code)
-    q = await feed.get_rate()
-    rub = amount * q.rate
-    await state.update_data(amount=amount, rate=q.rate, rub=rub, token_code=code)
-    await state.set_state(WithdrawFSM.waiting_address)
-    await message.answer(
-        f"✅ {amount:,.0f} {tok.symbol} = {rub:,.2f} ₽\n\n"
-        f"Куда отправить рубли?\nТелефон (+7...) или карта (2200...)",
-        parse_mode=ParseMode.HTML,
-    )
+        q = await feed.quote(1_000_000)
+        if q.ok:
+            await message.answer(
+                f"<b>Курс ЦАРЬ</b>\n\n"
+                f"1 000 000 ЦАРЬ = {q.rub_amount:.2f} ₽\n"
+                f"1 ЦАРЬ ≈ {q.tsar_price_usd*100:.6f} ¢\n"
+                f"Источник: {q.source}\n"
+                f"Курс USD: {q.rate_used:.2f} ₽"
+            )
+        else:
+            await message.answer(f"❌ Ошибка получения курса: {q.error}")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
 
 
-@router.message(WithdrawFSM.waiting_address)
-async def fsm_address(message: Message, state: FSMContext):
-    recipient = (message.text or "").strip()
-    data = await state.get_data()
-    amount = data.get("amount", 0)
-    rub = data.get("rub", 0)
-    code = data.get("token_code", DEFAULT_TOKEN)
-    tok = get_token(code)
-    user_id = message.from_user.id if message.from_user else 0
-    order_id = f"tsar-{code.lower()}-{int(time.time())}-{user_id}"
-    bridge = get_bridge()
-    result = await bridge.payout_rub(
-        amount_rub=rub,
-        recipient=recipient,
-        order_id=order_id,
-        description=f"{tok.symbol} → RUB: {amount:,.0f}",
+@router.message(Command("withdraw"))
+async def cmd_withdraw(message: Message, state: FSMContext):
+    await state.set_state(WithdrawForm.token_slug)
+    await message.answer("Выбери токен для вывода:", reply_markup=main_menu())
+
+
+@router.callback_query(F.data.startswith("token:"))
+async def on_token_select(callback: CallbackQuery, state: FSMContext):
+    slug = callback.data.split(":", 1)[1]
+    token = get_token(slug)
+    if not token:
+        await callback.message.answer("❌ Токен не найден")
+        return
+    await state.update_data(token_slug=slug)
+    await state.set_state(WithdrawForm.amount)
+    await callback.message.edit_text(
+        f"Выбран: {token.symbol} {token.name}\n\n"
+        f"Минимальная сумма: {token.min_tsar:,} ЦАРЬ\n\n"
+        "Введи количество ЦАРЬ для обмена:"
     )
-    await state.clear()
-    if result.success:
-        await message.answer(
-            f"✅ <b>Заявка #{order_id}</b>\n\n"
-            f"• Токен: {tok.symbol}\n"
-            f"• Сумма: {amount:,.0f}\n"
-            f"• К выплате: {rub:,.2f} ₽\n"
-            f"• Получатель: {recipient}\n"
-            f"• Статус: {result.status}",
-            parse_mode=ParseMode.HTML,
-            reply_markup=tokens_keyboard(user_id),
-        )
-    else:
-        await message.answer(
-            f"⏳ <b>Заявка #{order_id} (manual)</b>\n\n"
-            f"• Токен: {tok.symbol}\n"
-            f"• Сумма: {amount:,.0f}\n"
-            f"• К выплате: {rub:,.2f} ₽\n"
-            f"• Получатель: {recipient}\n\n"
-            f"<i>СБП не подключён. Причина: {result.error}</i>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=tokens_keyboard(user_id),
-        )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "rate")
+async def on_rate(callback: CallbackQuery):
+    try:
+        q = await feed.quote(1_000_000)
+        if q.ok:
+            await callback.message.edit_text(
+                f"<b>Курс ЦАРЬ</b>\n\n"
+                f"1 000 000 ЦАРЬ = {q.rub_amount:.2f} ₽\n"
+                f"1 ЦАРЬ ≈ {q.tsar_price_usd*100:.6f} ¢\n"
+                f"Источник: {q.source}\n"
+                f"Курс USD: {q.rate_used:.2f} ₽",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
+            )
+        else:
+            await callback.message.edit_text(f"❌ Ошибка: {q.error}")
+    except Exception as e:
+        await callback.message.edit_text(f"❌ Ошибка: {e}")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "pools")
+async def on_pools(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "<b>Балансы пулов</b>\n\n"
+        "Данные загружаются из DeDust...\n\n"
+        "<i>Функция в разработке</i>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "support")
+async def on_support(callback: CallbackQuery):
+    await callback.message.edit_text(
+        f"<b>Поддержка:</b> {SUPPORT_HANDLE}\n\n"
+        "По всем вопросам пиши @BAAL_NIK",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back")
+async def on_back(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "👑 <b>ЦАРЬ Обменник</b>\n\n"
+        "Выбери токен:",
+        reply_markup=main_menu()
+    )
+    await callback.answer()
 
 
 async def main():
-    logging.basicConfig(level=logging.INFO)
-    bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
-    logger.info("Bot polling started — tokens: %s", ", ".join(TOKENS.keys()))
-    await dp.start_polling(bot)
+    logger.info("Bot starting...")
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot, skip_updates=True)
 
 
 if __name__ == "__main__":
