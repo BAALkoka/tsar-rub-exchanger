@@ -4,6 +4,8 @@
   - BAAL_RA (основной)
   - GEMINI (Царь Гемини)
   - CROWN  (Царь с коронкой)
+
+Выплаты через P2P Market API (WalletBot).
 """
 from __future__ import annotations
 import asyncio
@@ -31,6 +33,8 @@ from aiogram.types import (
 from api.payouts.tokens import TOKENS, DEFAULT_TOKEN, get_token, list_tokens
 from api.payouts.config import TSAR_MASTER, TSAR_PRIMARY_POOL, USD_RUB_FALLBACK
 from api.payouts.price_feed import PriceFeed
+from api.payouts.p2p import P2PClient
+from api.payouts.service import PayoutService
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 SUPPORT_HANDLE = "@BAAL_NIK"
@@ -46,13 +50,14 @@ dp = Dispatcher(storage=MemoryStorage())
 router = Router()
 
 feed = PriceFeed(token_pool=TSAR_PRIMARY_POOL, manual_rate=1.0)
+p2p_client = P2PClient()
+payout_service = PayoutService(p2p_client=p2p_client, price_feed=feed)
 
 
 class WithdrawForm(StatesGroup):
     token_slug = State()
     amount = State()
     card = State()
-    confirm = State()
 
 
 def main_menu() -> InlineKeyboardMarkup:
@@ -69,7 +74,8 @@ def main_menu() -> InlineKeyboardMarkup:
 async def cmd_start(message: Message):
     await message.answer(
         "👑 <b>ЦАРЬ Обменник</b>\n\n"
-        "Обмен токенов ЦАРЬ → RUB → вывод на карту.\n\n"
+        "Обмен токенов ЦАРЬ → RUB → вывод на карту.\n"
+        "Выплаты через P2P Market.\n\n"
         "Выбери токен:",
         reply_markup=main_menu(),
     )
@@ -85,7 +91,8 @@ async def cmd_help(message: Message):
         "/help — эта справка\n\n"
         f"<b>Поддержка:</b> {SUPPORT_HANDLE}\n\n"
         "<b>Минимальная сумма:</b> 250 000 ЦАРЬ\n"
-        "<b>Комиссия:</b> 0.25%"
+        "<b>Комиссия:</b> 0.25%\n"
+        "<b>Выплата:</b> P2P (USDT → RUB на карту)"
     )
 
 
@@ -130,6 +137,63 @@ async def on_token_select(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+@router.message(WithdrawForm.amount)
+async def on_amount(message: Message, state: FSMContext):
+    try:
+        amount = float(message.text.replace(",", ".").replace(" ", ""))
+    except ValueError:
+        await message.answer("❌ Введи число, например 1000000")
+        return
+    if amount < 250_000:
+        await message.answer("❌ Минимум 250 000 ЦАРЬ")
+        return
+    await state.update_data(amount=amount)
+    await state.set_state(WithdrawForm.card)
+    await message.answer(
+        f"💳 <b>Сумма:</b> {amount:,.0f} ЦАРЬ\n\n"
+        "Введи номер карты для получения RUB\n(только цифры, 16 знаков):"
+    )
+
+
+@router.message(WithdrawForm.card)
+async def on_card(message: Message, state: FSMContext):
+    card = message.text.strip().replace(" ", "")
+    if not (card.isdigit() and len(card) in (16, 19, 20)):
+        await message.answer("❌ Неверный формат. Введи 16 цифр номера карты")
+        return
+    data = await state.get_data()
+    token_slug = data.get("token_slug")
+    amount = data.get("amount")
+    user_id = message.from_user.id
+    try:
+        from api.payouts.models import PayoutMethod
+        result = await payout_service.payout(
+            user_id=user_id,
+            tsar_amount=amount,
+            recipient=card,
+            method=PayoutMethod.CARD_RU,
+        )
+        if result.ok:
+            payout = result.payout
+            ad = result.p2p_ad
+            await message.answer(
+                f"✅ <b>Заявка создана</b>\n\n"
+                f"ID: {payout.id}\n"
+                f"Сумма: {amount:,.0f} ЦАРЬ\n"
+                f"Получишь: {payout.amount_rub:.2f} ₽\n"
+                f"На карту: {card[:6]}****{card[-4:]}\n\n"
+                f"🤝 <b>P2P-партнёр:</b> {ad.nickname if ad else '—'}\n"
+                f"Курс: {ad.price if ad else 0:.2f} ₽/USDT\n\n"
+                "Переведи ЦАРЬ на кошелёк казначейства (см. /help), "
+                "после этого P2P-партнёр переведёт RUB на карту."
+            )
+        else:
+            await message.answer(f"❌ Ошибка: {result.error}")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+    await state.clear()
+
+
 @router.callback_query(F.data == "rate")
 async def on_rate(callback: CallbackQuery):
     try:
@@ -152,12 +216,28 @@ async def on_rate(callback: CallbackQuery):
 
 @router.callback_query(F.data == "pools")
 async def on_pools(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "<b>Балансы пулов</b>\n\n"
-        "Данные загружаются из DeDust...\n\n"
-        "<i>Функция в разработке</i>",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
-    )
+    try:
+        ads = await p2p_client.get_buy_ads(crypto="USDT", fiat="RUB", side="BUY", page_size=5)
+        if not ads:
+            text = "📊 <b>P2P-объявления (BUY USDT)</b>\n\nНет активных объявлений."
+        else:
+            lines = ["📊 <b>P2P-объявления (покупка USDT)</b>\n"]
+            for a in ads[:5]:
+                lines.append(
+                    f"• <b>{a.nickname}</b> — {a.price:.2f} ₽/USDT\n"
+                    f"  доступно: {a.available_usdt:,.0f} USDT\n"
+                    f"  способы: {', '.join(a.payments[:3])}\n"
+                )
+            text = "\n".join(lines)
+        await callback.message.edit_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
+        )
+    except Exception as e:
+        await callback.message.edit_text(
+            f"❌ Ошибка P2P: {e}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
+        )
     await callback.answer()
 
 
