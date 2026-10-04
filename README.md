@@ -8,51 +8,70 @@
 
 Сделать обмен ЦАРЬ → RUB за 3 клика в Telegram, без регистрации на бирже, без KYC до порога.
 
-## ⚙️ Архитектура (черновик)
+## ⚙️ Архитектура
 
 - **Frontend**: Telegram-бот (основной UI), web-кабинет для крупных сумм
-- **Backend**: Node.js / Python, REST API + webhooks
-- **Blockchain**: TON-кошелёк для приёма ЦАРЬ-токенов, escrow-смарт-контракт
+- **Backend**: Python + FastAPI, REST API + webhooks
+- **Blockchain**: TON-контракт escrow для приёма ЦАРЬ
 - **Price oracle**: CoinGecko / CMC / DEX-фид
 - **AML/KYC**: модуль верификации по порогам суммы
 - **Payment rails**: СБП, банковские карты РФ
-
-## 🚦 Статусы сценариев
-
-| Сумма | Сценарий | KYC | Скорость вывода |
-|---|---|---|---|
-| до 5 000 ₽ | Малый | нет | моментально через СБП |
-| 5 000 – 50 000 ₽ | Средний | упрощённый (паспорт + селфи) | до 30 мин |
-| > 50 000 ₽ | Крупный | через менеджера | ручная обработка |
-
-## 💸 Комиссии
-
-- Сервисный сбор обменника: **1–3%**
-- Сетевой газ: по тарифу сети
-- Платёжный шлюз: по тарифу провайдера
 
 ## 📂 Структура репозитория
 
 ```
 tsar-rub-exchanger/
-├── README.md         — этот файл
-├── ROADMAP.md        — поэтапный план развития
-├── LICENSE           — MIT
-├── docs/             — документация
+├── README.md
+├── ROADMAP.md
+├── LICENSE
+├── docs/
 │   └── ARCHITECTURE.md
-├── src/
-│   ├── bot/          — Telegram-бот
-│   ├── api/          — backend API
-│   └── onchain/      — смарт-контракты и TON-интеграция
-└── .gitignore
+└── src/
+    ├── api/
+    │   └── payouts/        # СБП-модуль, выплаты
+    │       ├── __init__.py
+    │       ├── service.py
+    │       ├── sbp.py
+    │       ├── models.py
+    │       ├── requirements.txt
+    │       └── tests/
+    ├── bot/                 # Telegram-бот на aiogram v3
+    │   ├── main.py
+    │   ├── config.py
+    │   ├── middlewares.py
+    │   ├── requirements.txt
+    │   └── handlers/
+    │       ├── start.py
+    │       ├── balance.py
+    │       └── withdraw.py
+    └── onchain/
+        └── escrow/          # TON-смарт-контракт
+            ├── contract.fc
+            └── README.md
 ```
 
 ## 🚀 Quickstart
 
+### Backend (выплаты)
 ```bash
-git clone https://github.com/BAALkoka/tsar-rub-exchanger.git
-cd tsar-rub-exchanger
-# см. ROADMAP.md — пока идёт этап проектирования
+cd src/api/payouts
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pytest tests/
+```
+
+### Telegram-бот
+```bash
+cd src/bot
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+export BOT_TOKEN=xxx
+python main.py
+```
+
+### TON escrow
+```bash
+# см. src/onchain/escrow/README.md
 ```
 
 ## 📜 Лицензия

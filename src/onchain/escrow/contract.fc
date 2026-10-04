@@ -1,0 +1,64 @@
+// Escrow-контракт для приёма токенов серии ЦАРЬ.
+//
+// Логика:
+//   deposit  — пользователь отправляет ЦАРЬ на адрес контракта
+//   confirm  — backend помечает ордер как оплаченный в RUB → release не нужен, монеты остаются в контракте
+//   refund   — если выплата не прошла за 24 ч, пользователь может вернуть монеты
+//   dispute  — арбитраж
+//
+// Используется FunC для TON. Это скелет — для прода требуется аудит.
+//
+// API:
+//   op::deposit   (query_id, amount)        — приём ЦАРЬ
+//   op::refund    (query_id)                — возврат
+//   op::confirm   (query_id, external_id)   — подтверждение от backend
+//
+#include "imports/stdlib.fc";
+
+const op::deposit  = 0x10;
+const op::refund   = 0x11;
+const op::confirm  = 0x12;
+
+(int) load_data() {
+    slice ds = get_data().begin_parse();
+    return (ds~load_uint(64));   // balance в atomic units
+}
+
+() save_data(int balance) {
+    set_data(begin_cell().store_uint(balance, 64).end_cell());
+}
+
+() recv_internal(int my_balance, int msg_value, cell in_msg, slice in_msg_body) {
+    int op = in_msg_body~load_uint(8);
+
+    if (op == op::deposit) {
+        int query_id = in_msg_body~load_uint(64);
+        int amount   = in_msg_body~load_coins();
+        // Приём ЦАРЬ. В проде — проверка jetton-notification.
+        int balance = load_data();
+        save_data(balance + amount);
+        accept_message();
+        return();
+    }
+
+    if (op == op::refund) {
+        // Проверка таймаута: 24 ч = 86400 сек
+        int deposit_time = in_msg_body~load_uint(32);
+        int now = now();
+        throw_unless(101, now - deposit_time > 86400);
+        // Возврат монет отправителю. В проде — jetton transfer.
+        int balance = load_data();
+        save_data(0);
+        accept_message();
+        return();
+    }
+
+    if (op == op::confirm) {
+        int query_id = in_msg_body~load_uint(64);
+        slice backend = in_msg_body~load_msg_addr();
+        // Только backend может подтверждать.
+        throw_unless(102, equal_slices(backend, parse_std_addr("EQ...")));  // TODO
+        accept_message();
+        return();
+    }
+}
