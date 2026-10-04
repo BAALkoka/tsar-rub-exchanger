@@ -1,14 +1,15 @@
-"""Ценовой фид для обоих токенов серии ЦАРЬ.
+"""Ценовой фид для основного токена BAAL_RA (ЦАРЬ).
 
 Источники (по убыванию приоритета):
   1. CoinGecko Pro
   2. CoinGecko Free
-  3. GeckoTerminal DEX (по пулу)
+  3. GeckoTerminal USDT-пул (стабильная котировка)
   4. Manual override
+
+Для тестовых ЦАРЬ-мастеров выбирается соответствующий TON-пул автоматически.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import time
@@ -19,14 +20,21 @@ import httpx
 
 from .config import (
     GECKOTERMINAL_NETWORK,
+    TSAR_LEGACY_CROWN,
+    TSAR_LEGACY_GEMINI,
     TSAR_MASTER,
-    TSAR_TON_POOL,
-    TSAR2_MASTER,
-    TSAR2_TON_POOL,
+    TSAR_PRIMARY_POOL,
     USD_RUB_FALLBACK,
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Запасные пулы для тестовых ЦАРЬ-мастеров
+_LEGACY_POOLS = {
+    TSAR_LEGACY_GEMINI: "EQAQdBFfSkFbXWB_3jYaREV7aqGXj1S09NX3E03sOkZaUaKz",
+    TSAR_LEGACY_CROWN: "EQDGUZi_NjzljeAtIXzSQ5eku9YeamABuRftyKN7HC-6Rk_K",
+}
 
 
 @dataclass
@@ -45,7 +53,7 @@ class PriceQuote:
 
 
 class PriceFeedError(Exception):
-    """Все источники цен упали."""
+    pass
 
 
 class PriceFeed:
@@ -65,10 +73,7 @@ class PriceFeed:
         self.manual_rate = manual_rate
         self.coingecko_token_id = coingecko_token_id or os.environ.get("COINGECKO_TSAR_TOKEN_ID")
         self.token_master = token_master
-        # По умолчанию выбираем пул под конкретный master
-        self.token_pool = token_pool or (
-            TSAR2_TON_POOL if token_master == TSAR2_MASTER else TSAR_TON_POOL
-        )
+        self.token_pool = token_pool or _LEGACY_POOLS.get(token_master, TSAR_PRIMARY_POOL)
         self.timeout = timeout_sec
         self._cache: Optional[PriceQuote] = None
         self._client = httpx.AsyncClient(timeout=timeout_sec)
