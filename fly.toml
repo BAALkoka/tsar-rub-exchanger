@@ -1,0 +1,38 @@
+# Fly.io configuration
+app = "tsar-rub-exchanger-bot"
+primary_region = "ams"
+kill_signal = "SIGINT"
+kill_timeout = "5s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PYTHONUNBUFFERED = "1"
+  PYTHONPATH = "/app/src"
+
+[processes]
+  bot = "python3 -m bot.main"
+
+[[services]]
+  internal_port = 8000
+  protocol = "tcp"
+  auto_stop = "stop"
+  auto_start = true
+  min_machines_running = 0
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 100
+    soft_limit = 80
+
+[deploy]
+  release_command = "echo 'Deploy OK'"

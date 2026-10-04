@@ -2,14 +2,23 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY src/api/payouts/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt aiogram==3.13.1 httpx==0.27.0
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY src/ /app/src/
+COPY src/bot/requirements.txt src/bot/requirements.txt
+COPY src/api/payouts/requirements.txt src/api/payouts/requirements.txt
+RUN pip install --no-cache-dir -q \
+    aiogram==3.13.1 \
+    httpx==0.27.0 \
+    fastapi==0.115.0 \
+    uvicorn==0.32.0 \
+    pydantic==2.9.0 \
+    python-dotenv==1.0.0
+
+COPY src/ src/
 
 ENV PYTHONPATH=/app/src
-ENV PORT=8080
+ENV PYTHONUNBUFFERED=1
 
-EXPOSE 8080
-
-CMD ["python", "-m", "uvicorn", "api.payouts.api:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python3", "-m", "bot.main"]
