@@ -1,12 +1,10 @@
-"""Ценовой фид ЦАРЬ → RUB.
+"""Ценовой фид для обоих токенов серии ЦАРЬ.
 
-Источники (в порядке приоритета):
-  1. CoinGecko Pro API (если активирован PRO-ключ)
-  2. CoinGecko Free API (fallback)
-  3. GeckoTerminal DEX API (бесплатный, по контракту)
-  4. Rate override вручную (последний резерв)
-
-Для каждого источника реализован TTL-кэш (60 сек) и circuit breaker.
+Источники (по убыванию приоритета):
+  1. CoinGecko Pro
+  2. CoinGecko Free
+  3. GeckoTerminal DEX (по пулу)
+  4. Manual override
 """
 from __future__ import annotations
 
@@ -19,29 +17,38 @@ from typing import Optional
 
 import httpx
 
+from .config import (
+    GECKOTERMINAL_NETWORK,
+    TSAR_MASTER,
+    TSAR_TON_POOL,
+    TSAR2_MASTER,
+    TSAR2_TON_POOL,
+    USD_RUB_FALLBACK,
+)
+
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class PriceQuote:
-    """Котировка ЦАРЬ → RUB."""
-
-    rate: float
+    rate: float  # RUB за 1 токен
     source: str
+    token_master: str
     fetched_at: float
-    age_sec: float
 
     def is_fresh(self, max_age_sec: float = 60.0) -> bool:
-        return self.age_sec < max_age_sec
+        return time.time() - self.fetched_at < max_age_sec
+
+    @property
+    def age_sec(self) -> float:
+        return time.time() - self.fetched_at
 
 
 class PriceFeedError(Exception):
-    """Не получилось достать курс ни из одного источника."""
+    """Все источники цен упали."""
 
 
 class PriceFeed:
-    """Оркестратор ценового фида."""
-
     CACHE_TTL = 60.0
 
     def __init__(
@@ -49,15 +56,18 @@ class PriceFeed:
         *,
         coingecko_api_key: Optional[str] = None,
         manual_rate: Optional[float] = None,
-        geckoterminal_pool_address: Optional[str] = None,
         coingecko_token_id: Optional[str] = None,
+        token_master: str = TSAR_MASTER,
+        token_pool: Optional[str] = None,
         timeout_sec: float = 5.0,
     ):
         self.coingecko_api_key = coingecko_api_key or os.environ.get("COINGECKO_API_KEY")
         self.manual_rate = manual_rate
-        self.geckoterminal_pool_address = geckoterminal_pool_address
-        self.coingecko_token_id = coingecko_token_id or os.environ.get(
-            "COINGECKO_TSAR_TOKEN_ID", "tsar-token"
+        self.coingecko_token_id = coingecko_token_id or os.environ.get("COINGECKO_TSAR_TOKEN_ID")
+        self.token_master = token_master
+        # По умолчанию выбираем пул под конкретный master
+        self.token_pool = token_pool or (
+            TSAR2_TON_POOL if token_master == TSAR2_MASTER else TSAR_TON_POOL
         )
         self.timeout = timeout_sec
         self._cache: Optional[PriceQuote] = None
@@ -67,9 +77,7 @@ class PriceFeed:
         await self._client.aclose()
 
     async def get_rate(self) -> PriceQuote:
-        """Возвращает свежий курс. Пробует источники по очереди."""
         if self._cache and self._cache.is_fresh(self.CACHE_TTL):
-            self._cache.age_sec = time.time() - self._cache.fetched_at
             return self._cache
 
         for source_fn in (
@@ -85,24 +93,23 @@ class PriceFeed:
                     return quote
             except Exception as e:
                 logger.warning("PriceFeed: source %s failed: %s", source_fn.__name__, e)
-
         raise PriceFeedError("All price sources failed")
 
     async def _from_coingecko_pro(self) -> Optional[PriceQuote]:
-        if not self.coingecko_api_key:
+        if not (self.coingecko_api_key and self.coingecko_token_id):
             return None
         url = (
             f"https://pro-api.coingecko.com/api/v3/simple/price"
             f"?ids={self.coingecko_token_id}&vs_currencies=rub"
         )
-        headers = {"x-cg-pro-api-key": self.coingecko_api_key}
-        r = await self._client.get(url, headers=headers)
+        r = await self._client.get(url, headers={"x-cg-pro-api-key": self.coingecko_api_key})
         r.raise_for_status()
-        data = r.json()
-        rate = float(data[self.coingecko_token_id]["rub"])
-        return PriceQuote(rate=rate, source="coingecko-pro", fetched_at=time.time(), age_sec=0)
+        rate = float(r.json()[self.coingecko_token_id]["rub"])
+        return self._make_quote(rate, "coingecko-pro")
 
     async def _from_coingecko_free(self) -> Optional[PriceQuote]:
+        if not self.coingecko_token_id:
+            return None
         url = (
             f"https://api.coingecko.com/api/v3/simple/price"
             f"?ids={self.coingecko_token_id}&vs_currencies=rub"
@@ -113,42 +120,42 @@ class PriceFeed:
         if self.coingecko_token_id not in data:
             return None
         rate = float(data[self.coingecko_token_id]["rub"])
-        return PriceQuote(rate=rate, source="coingecko-free", fetched_at=time.time(), age_sec=0)
+        return self._make_quote(rate, "coingecko-free")
 
     async def _from_geckoterminal(self) -> Optional[PriceQuote]:
-        """Бесплатный DEX-фид: используем пул ЦАРЬ/ТОН на GeckoTerminal."""
-        if not self.geckoterminal_pool_address:
+        if not self.token_pool:
             return None
-        # Формат: /networks/ton/pools/{pool_address}
-        url = f"https://api.geckoterminal.com/api/v2/networks/ton/pools/{self.geckoterminal_pool_address}"
+        url = (
+            f"https://api.geckoterminal.com/api/v2/networks/{GECKOTERMINAL_NETWORK}"
+            f"/pools/{self.token_pool}"
+        )
         r = await self._client.get(url)
         r.raise_for_status()
         data = r.json()
         attrs = data["data"]["attributes"]
-        # Цена в USD, конвертим в RUB через CBR (статичный fallback)
         price_usd = float(attrs["base_token_price_usd"])
-        usd_to_rub = await self._fetch_usd_rub()
-        return PriceQuote(
-            rate=price_usd * usd_to_rub,
-            source="geckoterminal",
-            fetched_at=time.time(),
-            age_sec=0,
-        )
+        usd_rub = await self._fetch_usd_rub()
+        return self._make_quote(price_usd * usd_rub, "geckoterminal")
 
     async def _fetch_usd_rub(self) -> float:
         try:
-            r = await self._client.get("https://api.coingecko.com/api/v3/simple/price?ids=usd&vs_currencies=rub")
+            r = await self._client.get(
+                "https://api.exchangerate-api.com/v4/latest/USD"
+            )
             r.raise_for_status()
-            return float(r.json()["usd"]["rub"])
+            return float(r.json()["rates"]["RUB"])
         except Exception:
-            return 90.0  # запасной курс, обновляется руками
+            return USD_RUB_FALLBACK
 
     async def _from_manual(self) -> Optional[PriceQuote]:
         if self.manual_rate is None:
             return None
+        return self._make_quote(self.manual_rate, "manual")
+
+    def _make_quote(self, rate: float, source: str) -> PriceQuote:
         return PriceQuote(
-            rate=self.manual_rate,
-            source="manual",
+            rate=rate,
+            source=source,
+            token_master=self.token_master,
             fetched_at=time.time(),
-            age_sec=0,
         )
