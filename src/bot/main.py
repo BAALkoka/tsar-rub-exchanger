@@ -25,6 +25,7 @@ from aiogram.types import Message
 from api.payouts.config import TSAR_MASTER, TSAR_PRIMARY_POOL
 from api.payouts.price_feed import PriceFeed
 from api.payouts.sbp_adapter import SBPBridge
+from api.payouts.site_meta import EMITTER_SITE_URL, EMITTER_TELEGRAM
 from integrations.sbp.tinkoff import TinkoffSBPClient
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,8 @@ async def cmd_start(message: Message):
         "👑 <b>ЦАРЬ → RUB</b>\n\n"
         f"SBP-выплаты: {'✅ подключены' if sbp_ready else '⚠️ ручной режим'}\n\n"
         "<b>Команды:</b>\n"
-        "/quote — курс\n/withdraw — вывод\n/help — справка",
+        "/quote — курс\n/withdraw — вывод\n/help — справка\n"
+        f"<b>Эмитент:</b> {EMITTER_SITE_URL}",
         parse_mode=ParseMode.HTML,
     )
 
@@ -167,6 +169,7 @@ async def cmd_help(message: Message):
         "• 5 000–50 000 ₽ — паспорт\n"
         "• Свыше 50 000 ₽ — полный KYC\n\n"
         "<b>Поддержка:</b> @BAAL_NIK_2505lis\n\n"
+        f"<b>Эмитент:</b> {EMITTER_SITE_URL}\n"
         f"<b>Мастер:</b> {TSAR_MASTER[:10]}…{TSAR_MASTER[-6:]}\n"
         f"<b>Пул:</b> {TSAR_PRIMARY_POOL[:10]}…{TSAR_PRIMARY_POOL[-6:]}",
         parse_mode=ParseMode.HTML,
