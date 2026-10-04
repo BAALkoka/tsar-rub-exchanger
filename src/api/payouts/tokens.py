@@ -1,77 +1,58 @@
-"""Каталог поддерживаемых ЦАРЬ-токенов.
-
-Эмитент: АНО ЦЕНТР БЛИЗНЕЦЫ (Николай Александрович Ш.)
-Сайт: https://baal.tb.ru/2505lis
-"""
-from __future__ import annotations
+"""Метаданные токенов ЦАРЬ."""
 from dataclasses import dataclass
-from .config import (
-    TSAR_MASTER,
-    TSAR_LEGACY_GEMINI,
-    TSAR_LEGACY_CROWN,
-    TSAR_PRIMARY_POOL,
-)
+from typing import Optional
 
 
-@dataclass(frozen=True)
+@dataclass
 class TokenMeta:
-    code: str
-    symbol: str
+    slug: str
     name: str
+    symbol: str
     master: str
     pool: str
     decimals: int
+    min_tsar: int
     description: str
-    emoji: str
-    is_primary: bool
 
 
-TOKENS: dict[str, TokenMeta] = {
+TOKENS = {
     "BAAL_RA": TokenMeta(
-        code="BAAL_RA",
+        slug="BAAL_RA",
+        name="Царь",
         symbol="ЦАРЬ",
-        name="BAAL RA (основной)",
-        master=TSAR_MASTER,
-        pool=TSAR_PRIMARY_POOL,
+        master="EQC5D3XIrc777bcr8EOQ2_ZBMPuePUqT-zzWTr9-pJEoe7uf",
+        pool="EQBfclRZ2puWZvqy85DbMhKnqZh2386mxrOKki8GZo3YDgq4",
         decimals=9,
-        description="Основной выпуск АНО ЦЕНТР БЛИЗНЕЦЫ. 100 000 supply.",
-        emoji="👑",
-        is_primary=True,
+        min_tsar=250_000,
+        description="Основной токен ЦАРЬ (BAAL_RA)",
     ),
     "GEMINI": TokenMeta(
-        code="GEMINI",
-        symbol="ЦАРЬ-GEMINI",
+        slug="GEMINI",
         name="Царь Гемини",
-        master=TSAR_LEGACY_GEMINI,
-        pool="EQAQdBFfSkFbXWB_3jYaREV7aqGXj1S09NX3E03sOkZaUaKz",
+        symbol="ЦАРЬ♊",
+        master="EQBcUttXk7IhCF23ZghXNc7HY9v3_SAuhsWgW_YHntHsUYtM",
+        pool="EQBfclRZ2puWZvqy85DbMhKnqZh2386mxrOKki8GZo3YDgq4",
         decimals=9,
-        description="Серия Гемини, 10B supply.",
-        emoji="♊️",
-        is_primary=False,
+        min_tsar=250_000,
+        description="Царь Гемини — Gemini-серия",
     ),
     "CROWN": TokenMeta(
-        code="CROWN",
-        symbol="ЦАРЬ-👑",
+        slug="CROWN",
         name="Царь с коронкой",
-        master=TSAR_LEGACY_CROWN,
-        pool="EQDGUZi_NjzljeAtIXzSQ5eku9YeamABuRftyKN7HC-6Rk_K",
+        symbol="ЦАРЬ👑",
+        master="EQB2T7svf6RzbvYc99jWBfj6n9P3gUsyR4AiiBLgPYIwqKX2",
+        pool="EQBfclRZ2puWZvqy85DbMhKnqZh2386mxrOKki8GZo3YDgq4",
         decimals=9,
-        description="Серия Царь с коронкой, 1B supply.",
-        emoji="👑",
-        is_primary=False,
+        min_tsar=250_000,
+        description="Царь с коронкой — коллекционная серия",
     ),
 }
 
-DEFAULT_TOKEN = "BAAL_RA"
+DEFAULT_TOKEN = TOKENS["BAAL_RA"]
 
 
-def get_token(code: str | None = None) -> TokenMeta:
-    if not code:
-        return TOKENS[DEFAULT_TOKEN]
-    code = code.upper()
-    if code not in TOKENS:
-        return TOKENS[DEFAULT_TOKEN]
-    return TOKENS[code]
+def get_token(slug: str) -> Optional[TokenMeta]:
+    return TOKENS.get(slug)
 
 
 def list_tokens() -> list[TokenMeta]:
