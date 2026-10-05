@@ -1,12 +1,6 @@
-"""Telegram-бот обменника ЦАРЬ -> RUB.
+"""Telegram-бот обменника ЦАРЬ → RUB.
 
-Поддерживает 3 серии ЦАРЬ через inline-кнопки:
-  - 👑 BAAL_RA (основной ЦАРЬ)
-  - ♊  Царь Гемини
-  - 👑 Царь с коронкой
-
-Автоопределение токена по входящему IP-переводу через TonWatcher.
-Выплаты через P2P Market API (WalletBot).
+3 серии ЦАРЬ, у каждого свой DeDust-пул и кнопка курса.
 """
 from __future__ import annotations
 import asyncio
@@ -40,8 +34,6 @@ from api.payouts.tokens import (
     short_master,
 )
 from api.payouts.config import (
-    TSAR_MASTER,
-    TSAR_PRIMARY_POOL,
     USD_RUB_FALLBACK,
     SUPPORT_HANDLE,
     USDT_TREASURY_ADDRESS,
@@ -52,7 +44,6 @@ from api.payouts.service import PayoutService
 from api.payouts.ton_watcher import TonWatcher, IncomingTransfer
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("tsar.bot")
 
@@ -63,11 +54,18 @@ bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTM
 dp = Dispatcher(storage=MemoryStorage())
 router = Router()
 
-feed = PriceFeed(token_pool=TSAR_PRIMARY_POOL, manual_rate=1.0)
+# === Отдельный PriceFeed для каждого царя (свой DeDust-пул) ===
+feeds: dict[str, PriceFeed] = {
+    t.slug: PriceFeed(token_master=t.master, token_pool=t.pool, manual_rate=1.0)
+    for t in list_tokens()
+}
 p2p_client = P2PClient()
-payout_service = PayoutService(p2p_client=p2p_client, price_feed=feed)
-# Админский канал для уведомлений о входящих переводах
+
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0") or "0")
+
+
+def _service_for(slug: str) -> PayoutService:
+    return PayoutService(p2p_client=p2p_client, price_feed=feeds[slug])
 
 
 class WithdrawForm(StatesGroup):
@@ -78,16 +76,25 @@ class WithdrawForm(StatesGroup):
 
 def token_button(t) -> InlineKeyboardButton:
     return InlineKeyboardButton(
-        text=f"{t.emoji} {t.symbol} {t.name} ({short_master(t.master)})",
+        text=f"{t.emoji} {t.symbol} {t.name}",
         callback_data=f"token:{t.slug}",
     )
 
 
+def pool_button(t) -> InlineKeyboardButton:
+    return InlineKeyboardButton(
+        text=f"🏦 Пуль {t.symbol} ({t.pool_label})",
+        callback_data=f"pool:{t.slug}",
+    )
+
+
 def main_menu() -> InlineKeyboardMarkup:
-    buttons = [[token_button(t)] for t in list_tokens()]
-    buttons.append([InlineKeyboardButton(text="💱 Курс ЦАРЬ", callback_data="rate")])
+    buttons = []
+    for t in list_tokens():
+        buttons.append([token_button(t)])
+        buttons.append([pool_button(t)])
+    buttons.append([InlineKeyboardButton(text="💱 Общий курс USD/RUB", callback_data="usd_rub")])
     buttons.append([InlineKeyboardButton(text="📊 P2P-объявления", callback_data="pools")])
-    buttons.append([InlineKeyboardButton(text="🏦 Курс DeDust-пула", callback_data="pool_rate")])
     buttons.append([InlineKeyboardButton(text="🆘 Поддержка", callback_data="support")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -97,11 +104,11 @@ async def cmd_start(message: Message):
     await message.answer(
         "👑 <b>ЦАРЬ Обменник</b>\n\n"
         "Обмен ЦАРЬ → USDT → P2P → RUB → карта.\n\n"
-        "Все 3 серии:\n"
-        "  👑 BAAL_RA — основной ЦАРЬ\n"
-        "  ♊  Царь Гемини\n"
-        "  👑 Царь с коронкой\n\n"
-        "Выбери токен:",
+        "<b>3 серии ЦАРЬ — каждая со своим DeDust-пулом:</b>\n"
+        "  👑 BAAL_RA — DeDust USD₮-пул\n"
+        "  ♊  Гемини — DeDust TON-пул\n"
+        "  👑 С коронкой — DeDust TON-пул\n\n"
+        "Нажми на токен, чтобы узнать курс или сделать вывод:",
         reply_markup=main_menu(),
     )
 
@@ -111,65 +118,123 @@ async def cmd_help(message: Message):
     await message.answer(
         "<b>Помощь</b>\n\n"
         "/start — главное меню\n"
-        "/rate — текущий курс ЦАРЬ\n"
-        "/pool — курс DeDust-пула\n"
-        "/tokens — список токенов\n"
+        "/rate — общий курс ЦАРЬ\n"
+        "/pool BAAL_RA — USD₮-пул ЦАРЬ\n"
+        "/pool GEMINI — TON-пул Гемини\n"
+        "/pool CROWN — TON-пул С коронкой\n"
+        "/tokens — все 3 серии\n"
         "/withdraw — вывод средств\n"
         "/help — эта справка\n\n"
         f"<b>Поддержка:</b> {SUPPORT_HANDLE}\n"
-        f"<b>Казначейство ЦАРЬ/USDT:</b> <code>{USDT_TREASURY_ADDRESS}</code>\n\n"
-        "<b>Минимальная сумма:</b> 250 000 ЦАРЬ\n"
-        "<b>Выплата:</b> P2P Market (WalletBot)"
+        f"<b>Казначейство:</b> <code>{USDT_TREASURY_ADDRESS}</code>"
     )
 
 
 @router.message(Command("tokens"))
 async def cmd_tokens(message: Message):
-    lines = ["<b>Все серии ЦАРЬ:</b>\n"]
+    lines = ["<b>Все серии ЦАРЬ + DeDust-пулы:</b>\n"]
     for t in list_tokens():
         lines.append(
-            f"{t.emoji} <b>{t.name}</b>\n"
-            f"  <code>{t.master}</code>\n"
-            f"  мин: {t.min_tsar:,} ЦАРЬ | decimals: {t.decimals}\n"
-            f"  {t.description}\n"
+            f"{t.emoji} <b>{t.name}</b> | {t.symbol}\n"
+            f"  Master: <code>{t.master}</code>\n"
+            f"  DeDust-пул: <code>{t.pool}</code> ({t.pool_label})\n"
+            f"  Мин. сумма: {t.min_tsar:,} ЦАРЬ\n"
         )
     await message.answer("\n".join(lines))
 
 
 @router.message(Command("rate"))
 async def cmd_rate(message: Message):
+    await cmd_pool_main(message)
+
+
+async def cmd_pool_main(message: Message):
+    lines = ["💱 <b>Общий курс ЦАРЬ</b>\n"]
+    for t in list_tokens():
+        try:
+            q = await feeds[t.slug].quote(1_000_000)
+            if q.ok:
+                lines.append(
+                    f"{t.emoji} <b>{t.symbol} {t.name}</b> ({t.pool_label})\n"
+                    f"  1 000 000 ЦАРЬ = <b>{q.rub_amount:,.2f} ₽</b>\n"
+                    f"  1 ЦАРЬ ≈ {q.tsar_price_usd*100:.4f} ¢\n"
+                    f"  источник: {q.source}\n"
+                )
+            else:
+                lines.append(f"{t.emoji} {t.symbol}: ❌ {q.error or 'недоступен'}\n")
+        except Exception as e:
+            lines.append(f"{t.emoji} {t.symbol}: ❌ {e}\n")
+    lines.append(f"\n<i>USD/RUB: {USD_RUB_FALLBACK:.2f} ₽</i>")
+    await message.answer("\n".join(lines), reply_markup=main_menu())
+
+
+@router.callback_query(F.data.startswith("pool:"))
+async def on_pool(callback: CallbackQuery):
+    slug = callback.data.split(":", 1)[1]
+    token = get_token(slug)
+    if not token:
+        await callback.message.edit_text("❌ Токен не найден")
+        return
     try:
-        q = await feed.quote(1_000_000)
+        q = await feeds[slug].quote(1_000_000)
         if q.ok:
-            await message.answer(
-                f"💱 <b>Курс ЦАРЬ</b>\n\n"
-                f"1 000 000 ЦАРЬ = <b>{q.rub_amount:.2f} ₽</b>\n"
-                f"1 ЦАРЬ ≈ {q.tsar_price_usd*100:.6f} ¢\n"
-                f"Источник: {q.source}\n"
-                f"Курс USD/RUB: {q.rate_used:.2f} ₽"
+            text = (
+                f"🏦 <b>{token.symbol} {token.name} — DeDust {token.pool_label}-пул</b>\n\n"
+                f"Адрес пула: <code>{token.pool}</code>\n"
+                f"Jetton master: <code>{token.master}</code>\n\n"
+                f"1 000 000 ЦАРЬ = <b>{q.rub_amount:,.2f} ₽</b>\n"
+                f"1 ЦАРЬ ≈ {q.tsar_price_usd*100:.4f} ¢ ({q.tsar_price_usd:.6f} USD)\n"
+                f"USD/RUB: {q.rate_used:.2f} ₽\n"
+                f"Источник: <i>{q.source}</i>"
             )
         else:
-            await message.answer(f"❌ Ошибка курса: {q.error}")
+            text = f"❌ Не удалось получить курс {token.symbol}: {q.error}"
     except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
+        text = f"❌ Ошибка: {e}"
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
+    )
+    await callback.answer()
 
 
 @router.message(Command("pool"))
 async def cmd_pool(message: Message):
-    try:
-        q = await feed.quote(1_000_000)
-        if q.ok:
-            await message.answer(
-                f"🏦 <b>DeDust-пул TSAR/USDT</b>\n\n"
-                f"1 000 000 ЦАРЬ = <b>{q.rub_amount:.2f} ₽</b>\n"
-                f"1 ЦАРЬ ≈ {q.tsar_price_usd*100:.6f} ¢\n"
-                f"Источник: {q.source}\n"
-                f"Пул: <code>{short_master(TSAR_PRIMARY_POOL)}</code>"
-            )
-        else:
-            await message.answer(f"❌ Ошибка пула: {q.error}")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
+    args = (message.text or "").split()
+    if len(args) > 1:
+        slug = args[1].upper()
+        token = get_token(slug)
+        if not token:
+            await message.answer(f"❌ Неизвестный токен: {slug}")
+            return
+        try:
+            q = await feeds[slug].quote(1_000_000)
+            if q.ok:
+                await message.answer(
+                    f"🏦 <b>{token.symbol} — DeDust {token.pool_label}-пул</b>\n\n"
+                    f"Адрес пула: <code>{token.pool}</code>\n"
+                    f"1 000 000 ЦАРЬ = <b>{q.rub_amount:,.2f} ₽</b>\n"
+                    f"1 ЦАРЬ ≈ {q.tsar_price_usd*100:.4f} ¢\n"
+                    f"USD/RUB: {q.rate_used:.2f} ₽\n"
+                    f"Источник: <i>{q.source}</i>"
+                )
+            else:
+                await message.answer(f"❌ {q.error}")
+        except Exception as e:
+            await message.answer(f"❌ {e}")
+    else:
+        await cmd_pool_main(message)
+
+
+@router.callback_query(F.data == "usd_rub")
+async def on_usd_rub(callback: CallbackQuery):
+    await callback.message.edit_text(
+        f"💱 <b>USD/RUB</b>\n\n"
+        f"Текущий fallback: {USD_RUB_FALLBACK:.2f} ₽\n"
+        f"Источник: exchangerate-api.com",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
+    )
+    await callback.answer()
 
 
 @router.message(Command("withdraw"))
@@ -187,11 +252,17 @@ async def on_token_select(callback: CallbackQuery, state: FSMContext):
         return
     await state.update_data(token_slug=slug)
     await state.set_state(WithdrawForm.amount)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"🏦 Курс {token.symbol} (DeDust {token.pool_label})", callback_data=f"pool:{slug}")],
+        [InlineKeyboardButton(text="◀ Назад", callback_data="back")],
+    ])
     await callback.message.edit_text(
         f"{token.emoji} Выбран: <b>{token.symbol} {token.name}</b>\n\n"
-        f"Адрес (jetton-master): <code>{token.master}</code>\n"
+        f"Master: <code>{token.master}</code>\n"
+        f"DeDust-пул: <code>{token.pool}</code> ({token.pool_label})\n"
         f"Минимальная сумма: {token.min_tsar:,} ЦАРЬ\n\n"
-        "Введи количество ЦАРЬ для обмена:"
+        "Введи количество ЦАРЬ для обмена:",
+        reply_markup=kb,
     )
     await callback.answer()
 
@@ -221,29 +292,27 @@ async def on_card(message: Message, state: FSMContext):
         await message.answer("❌ Неверный формат. Введи 16 цифр номера карты")
         return
     data = await state.get_data()
-    token_slug = data.get("token_slug")
+    slug = data.get("token_slug")
     amount = data.get("amount")
     user_id = message.from_user.id
-    token = get_token(token_slug)
+    token = get_token(slug)
     try:
-        from api.payouts.models import PayoutMethod
-        result = await payout_service.payout(
+        result = await _service_for(slug).payout(
             user_id=user_id,
             tsar_amount=amount,
             recipient=card,
             method=PayoutMethod.CARD_RU,
         )
         if result.ok:
-            payout = result.payout
             ad = result.p2p_ad
             await message.answer(
                 f"✅ <b>Заявка создана</b>\n\n"
-                f"Токен: {token.emoji if token else '👑'} {token.name if token else ''}\n"
-                f"ID: <code>{payout.id}</code>\n"
+                f"Токен: {token.emoji} {token.symbol} {token.name}\n"
+                f"ID: <code>{result.payout.id}</code>\n"
                 f"Сумма: {amount:,.0f} ЦАРЬ\n"
-                f"Получишь: <b>{payout.amount_rub:.2f} ₽</b>\n"
+                f"Получишь: <b>{result.payout.amount_rub:.2f} ₽</b>\n"
                 f"На карту: <code>{card[:6]}****{card[-4:]}</code>\n\n"
-                f"🤝 P2P-партнёр: {ad.nickname if ad else '—'}\n"
+                f"🤝 P2P-партнёр: {ad.nickname if ad else 'mock'}\n"
                 f"Курс: {ad.price if ad else 0:.2f} ₽/USDT\n\n"
                 f"Переведи ЦАРЬ на:\n<code>{USDT_TREASURY_ADDRESS}</code>\n"
                 f"После прихода ЦАРЬ бот сам определит серию и свяжет с заявкой."
@@ -255,46 +324,6 @@ async def on_card(message: Message, state: FSMContext):
     await state.clear()
 
 
-@router.callback_query(F.data == "rate")
-async def on_rate(callback: CallbackQuery):
-    try:
-        q = await feed.quote(1_000_000)
-        if q.ok:
-            await callback.message.edit_text(
-                f"💱 <b>Курс ЦАРЬ</b>\n\n"
-                f"1 000 000 ЦАРЬ = <b>{q.rub_amount:.2f} ₽</b>\n"
-                f"1 ЦАРЬ ≈ {q.tsar_price_usd*100:.6f} ¢\n"
-                f"Источник: {q.source}\n"
-                f"Курс USD/RUB: {q.rate_used:.2f} ₽",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
-            )
-        else:
-            await callback.message.edit_text(f"❌ Ошибка: {q.error}")
-    except Exception as e:
-        await callback.message.edit_text(f"❌ Ошибка: {e}")
-    await callback.answer()
-
-
-@router.callback_query(F.data == "pool_rate")
-async def on_pool_rate(callback: CallbackQuery):
-    try:
-        q = await feed.quote(1_000_000)
-        if q.ok:
-            await callback.message.edit_text(
-                f"🏦 <b>DeDust TSAR/USDT</b>\n\n"
-                f"1 000 000 ЦАРЬ = <b>{q.rub_amount:.2f} ₽</b>\n"
-                f"1 ЦАРЬ ≈ {q.tsar_price_usd*100:.6f} ¢\n"
-                f"Источник: {q.source}\n"
-                f"Пул: <code>{short_master(TSAR_PRIMARY_POOL)}</code>",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
-            )
-        else:
-            await callback.message.edit_text(f"❌ Ошибка пула: {q.error}")
-    except Exception as e:
-        await callback.message.edit_text(f"❌ Ошибка: {e}")
-    await callback.answer()
-
-
 @router.callback_query(F.data == "pools")
 async def on_pools(callback: CallbackQuery):
     try:
@@ -302,7 +331,7 @@ async def on_pools(callback: CallbackQuery):
         if not ads:
             text = "📊 <b>P2P-объявления (BUY USDT)</b>\n\nНет активных объявлений."
         else:
-            lines = ["📊 <b>P2P-объявления (покупка USDT)</b>\n"]
+            lines = [f"📊 <b>P2P-объявления (покупка USDT)</b>\n<i>P2P-API: {'✅ реальный' if p2p_client.is_configured else '⚠️ mock (без P2P_API_KEY)'}</i>\n"]
             for a in ads[:5]:
                 lines.append(
                     f"• <b>{a.nickname}</b> — {a.price:.2f} ₽/USDT\n"
@@ -310,16 +339,12 @@ async def on_pools(callback: CallbackQuery):
                     f"  способы: {', '.join(a.payments[:3])}\n"
                 )
             text = "\n".join(lines)
-        await callback.message.edit_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
-        )
     except Exception as e:
-        await callback.message.edit_text(
-            f"❌ P2P недоступен: {e}\n"
-            f"<i>Когда добавишь P2P_API_KEY в секреты — кнопка заработает.</i>",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
-        )
+        text = f"❌ P2P ошибка: {e}"
+    await callback.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
+    )
     await callback.answer()
 
 
@@ -344,7 +369,6 @@ async def on_back(callback: CallbackQuery):
 
 # === TonWatcher: автоопределение токена по входящему IP-переводу ===
 async def on_incoming_transfer(t: IncomingTransfer) -> None:
-    """Уведомляет админа (или пишет в лог), когда кто-то переводит ЦАРЬ на казну."""
     emoji = t.token.emoji if t.token else "❓"
     name = t.token.name if t.token else "НЕИЗВЕСТНЫЙ ТОКЕН"
     text = (
@@ -367,7 +391,6 @@ async def main():
     dp.include_router(router)
     logger.info("Bot starting...")
     await bot.delete_webhook(drop_pending_updates=True)
-    # Запускаем TON-watcher для автодетекта IP-переводов
     watcher = TonWatcher(poll_interval_sec=15.0, on_transfer=on_incoming_transfer)
     watcher.start()
     logger.info("TonWatcher started")
@@ -375,6 +398,9 @@ async def main():
         await dp.start_polling(bot, skip_updates=True)
     finally:
         await watcher.stop()
+        for f in feeds.values():
+            await f.close()
+        await p2p_client.close()
 
 
 if __name__ == "__main__":
