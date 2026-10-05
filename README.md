@@ -1,84 +1,77 @@
-# 👑 ЦАРЬ → RUB → Карта
+# 👑 Tsar RUB Exchanger
 
-**Off-ramp сервис для серии токенов ЦАРЬ: обмен крипты → RUB → банковская карта.**
+Telegram-бот + FastAPI для off-ramp токенов ЦАРЬ → RUB на карту.
 
-Держатели токенов серии **ЦАРЬ** могут продавать монеты за фиат (₽) и получать деньги напрямую на карту — без бирж и сложного онбординга.
+## Возможности
 
-## 🎯 Цель
+- 3 серии ЦАРЬ с emoji-атрибутом 👑:
+  - 👑 **Царь BAAL_RA** — основной
+  - ♊ **Царь Гемини** — Gemini-серия
+  - 👑 **Царь с коронкой** — коллекционная
+- **TON auto-detect** — watcher опрашивает tonapi.io каждые 15с
+- **Автоопределение токена** по jetton-master при входящем IP-переводе
+- **P2P Market** — через WalletBot API (`X-API-Key`) — находит трейдеров BUY USDT
+- **DeDust-пул TSAR/USDT** — реальный курс через GeckoTerminal
+- **FastAPI endpoints** — `/v1/quote`, `/v1/payouts`, `/v1/pools`, `/ton/notify`
+- **GitHub Actions workflow** — бот живёт 24/7 бесплатно
 
-Сделать обмен ЦАРЬ → RUB за 3 клика в Telegram, без регистрации на бирже, без KYC до порога.
-
-## ⚙️ Архитектура
-
-- **Frontend**: Telegram-бот (основной UI), web-кабинет для крупных сумм
-- **Backend**: Python + FastAPI, REST API + webhooks
-- **Blockchain**: TON-контракт escrow для приёма ЦАРЬ
-- **Price oracle**: CoinGecko / CMC / DEX-фид
-- **AML/KYC**: модуль верификации по порогам суммы
-- **Payment rails**: СБП, банковские карты РФ
-
-## 📂 Структура репозитория
+## Архитектура
 
 ```
-tsar-rub-exchanger/
-├── README.md
-├── ROADMAP.md
-├── LICENSE
-├── docs/
-│   └── ARCHITECTURE.md
-└── src/
-    ├── api/
-    │   └── payouts/        # СБП-модуль, выплаты
-    │       ├── __init__.py
-    │       ├── service.py
-    │       ├── sbp.py
-    │       ├── models.py
-    │       ├── requirements.txt
-    │       └── tests/
-    ├── bot/                 # Telegram-бот на aiogram v3
-    │   ├── main.py
-    │   ├── config.py
-    │   ├── middlewares.py
-    │   ├── requirements.txt
-    │   └── handlers/
-    │       ├── start.py
-    │       ├── balance.py
-    │       └── withdraw.py
-    └── onchain/
-        └── escrow/          # TON-смарт-контракт
-            ├── contract.fc
-            └── README.md
+src/
+├── bot/main.py              # Telegram-бот + TonWatcher
+└── api/payouts/
+    ├── tokens.py            # 3 серии ЦАРЬ + emoji 👑 + find_by_master
+    ├── price_feed.py        # GeckoTerminal → DeDust-пул TSAR/USDT
+    ├── p2p.py               # WalletBot P2P Market client
+    ├── ton_watcher.py       # Polling tonapi.io + detect_token
+    ├── service.py           # ЦАРЬ → USDT → P2P → RUB → карта
+    ├── api.py               # FastAPI: /v1/quote, /v1/payouts, /ton/notify
+    └── config.py            # MASTER-адреса, пулы, treasury
 ```
 
-## 🚀 Quickstart
+## Запуск
 
-### Backend (выплаты)
 ```bash
-cd src/api/payouts
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-pytest tests/
+export TELEGRAM_BOT_TOKEN="..."
+export P2P_API_KEY="..."          # WalletBot (опц.)
+export TONAPI_TOKEN="..."         # tonapi.io (опц.)
+export ADMIN_CHAT_ID="..."        # для уведомлений о IP-переводах
+export PYTHONPATH=src
+python3 -m bot.main
 ```
 
-### Telegram-бот
-```bash
-cd src/bot
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-export BOT_TOKEN=xxx
-python main.py
+## Команды бота
+
+- `/start` — главное меню (3 токена 👑)
+- `/rate` — курс ЦАРЬ
+- `/pool` — курс DeDust-пула TSAR/USDT
+- `/tokens` — все 3 серии
+- `/withdraw` — вывод RUB на карту
+- `/help` — справка
+
+## Кнопки
+
+```
+👑 ЦАРЬ Царь BAAL_RA (EQC5D3…Eoe7uf)
+♊ ЦАРЬ♊ Царь Гемини (EQBcUt…HsUYtM)
+👑 ЦАРЬ👑 Царь с коронкой (EQB2T7…IwqKX2)
+💱 Курс ЦАРЬ
+📊 P2P-объявления
+🏦 Курс DeDust-пула
+🆘 Поддержка
 ```
 
-### TON escrow
-```bash
-# см. src/onchain/escrow/README.md
-```
+## TON-казначейство
 
-## 📜 Лицензия
+USDT приём на кошелёк казначейства: `UQA5gfkm8i4DutEDkMvjmTi3N8VC46yZHKAK_nnpYjawvCet`
 
-MIT — см. [LICENSE](LICENSE).
+Когда приходит jetton — автодетект по master-адресу:
+- `EQC5D3XIrc777bcr8EOQ2_ZBMPuePUqT-zzWTr9-pJEoe7uf` → BAAL_RA
+- `EQBcUttXk7IhCF23ZghXNc7HY9v3_SAuhsWgW_YHntHsUYtM` → Гемини
+- `EQB2T7svf6RzbvYc99jWBfj6n9P3gUsyR4AiiBLgPYIwqKX2` → С коронкой
 
-## 👑 Контакты
+## Deploy
 
-- Telegram: [@BAAL_NIK](https://t.me/BAAL_NIK_2505lis)
-- Сайт: [ANO Center Gemini](https://sites.google.com/view/ano-center-gemini25)
+Render Blueprint: `infra/render.yaml`
+GitHub Actions: `.github/workflows/bot-keepalive.yml`
