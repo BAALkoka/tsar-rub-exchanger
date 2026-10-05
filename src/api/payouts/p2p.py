@@ -12,8 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
-import asyncio
-import random
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -45,6 +44,7 @@ class P2PAd:
     merchant_level: str = ""
     is_online: bool = True
     source: str = ""
+    refreshed_at: float = 0.0
 
 
 class P2PClient:
@@ -59,10 +59,13 @@ class P2PClient:
             timeout=timeout_sec,
             headers={"accept": "application/json", "User-Agent": "tsar-bot/1.0"},
         )
-        # Cache to avoid hammering the API
+        # Cache
         self._ads_cache: list[P2PAd] = []
         self._cache_time: float = 0.0
         self._cache_ttl: float = 30.0
+        # Stats
+        self.refresh_count: int = 0
+        self.last_source: str = ""
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -70,6 +73,28 @@ class P2PClient:
     @property
     def is_configured(self) -> bool:
         return bool(self.api_key)
+
+    @property
+    def cache_age_sec(self) -> float:
+        return time.time() - self._cache_time if self._cache_time else 0.0
+
+    @property
+    def cache_size(self) -> int:
+        return len(self._ads_cache)
+
+    def invalidate_cache(self) -> None:
+        """Сбросить кэш (форсированная перепарсинка при следующем запросе)."""
+        self._ads_cache = []
+        self._cache_time = 0.0
+        logger.info("P2P: cache invalidated")
+
+    async def refresh(self) -> list[P2PAd]:
+        """Сбросить кэш и сразу перепарсить объявления. Возвращает свежий список."""
+        self.invalidate_cache()
+        ads = await self.get_buy_ads(force_refresh=True)
+        self.refresh_count += 1
+        logger.info("P2P: refreshed #%d, %d ads, source=%s", self.refresh_count, len(ads), self.last_source)
+        return ads
 
     async def get_buy_ads(
         self,
@@ -81,12 +106,12 @@ class P2PClient:
         force_refresh: bool = False,
     ) -> list[P2PAd]:
         """Возвращает активные объявления с кэшем."""
-        import time
         if not force_refresh and self._ads_cache and (time.time() - self._cache_time) < self._cache_ttl:
             return self._ads_cache
 
         ads: list[P2PAd] = []
         source = "mock"
+        now = time.time()
 
         # Tier 1: реальный WalletBot API
         if self.api_key:
@@ -105,13 +130,16 @@ class P2PClient:
             source = "mock"
             logger.info("P2P: using mock ads (%d)", len(ads))
 
-        # Помечаем источник
+        # Помечаем источник и время
         for a in ads:
             if not a.source:
                 a.source = source
+            if not a.refreshed_at:
+                a.refreshed_at = now
 
         self._ads_cache = ads
-        self._cache_time = time.time()
+        self._cache_time = now
+        self.last_source = source
         return ads
 
     async def _fetch_walletbot(
@@ -145,15 +173,17 @@ class P2PClient:
                     merchant_level=str(a.get("merchantLevel") or a.get("level") or ""),
                     is_online=bool(a.get("isOnline", True)),
                     source="walletbot",
+                    refreshed_at=time.time(),
                 ))
             except (TypeError, ValueError) as e:
                 logger.warning("skip bad P2P ad: %s | %s", a, e)
         return out
 
     def _mock_ads(self) -> list[P2PAd]:
-        """Расширенный mock с реалистичными продавцами RUB/USDT."""
+        """Расширенный mock с реалистичными продавцами RUB/USDT + вариативность."""
+        import random
         base = USD_RUB_FALLBACK
-        random.seed(42)
+        random.seed()
         sellers = [
             ("GarantTrade_RU", "Diamond", 200_000, ["Tinkoff", "СБП", "Sberbank"]),
             ("P2P_Legend",      "Platinum", 150_000, ["Альфа", "ВТБ", "СБП"]),
@@ -163,11 +193,14 @@ class P2PClient:
             ("MerchantPro_24",  "Platinum", 180_000, ["Tinkoff", "МТС", "СБП"]),
             ("FastSwap_Online", "Gold",      90_000, ["Альфа", "СБП"]),
             ("BigBag_USDT",     "Diamond",  500_000, ["Tinkoff", "Сбербанк", "СБП", "Альфа", "ВТБ"]),
+            ("QuickTrade_24",   "Platinum", 120_000, ["Тинькофф", "СБП"]),
+            ("ExpressP2P",      "Gold",      70_000, ["Альфа", "ВТБ", "СБП"]),
         ]
         ads = []
+        now = time.time()
         for i, (nick, level, avail, pays) in enumerate(sellers):
-            # Разные цены вокруг базы (±0.7%)
-            price = base * (1 + (random.random() - 0.5) * 0.014)
+            # Разные цены вокруг базы (±1.0%) — при каждом refresh новые
+            price = base * (1 + (random.random() - 0.5) * 0.020)
             ads.append(P2PAd(
                 id=f"mock-{i+1}",
                 nickname=nick,
@@ -179,6 +212,7 @@ class P2PClient:
                 merchant_level=level,
                 is_online=True,
                 source="mock",
+                refreshed_at=now,
             ))
         return ads
 
