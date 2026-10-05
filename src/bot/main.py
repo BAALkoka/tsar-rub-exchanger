@@ -1,8 +1,8 @@
 """Telegram-бот обменника ЦАРЬ → RUB.
 
-3 серии ЦАРЬ, у каждого свой DeDust-пул.
+3 серии ЦАРЬ, у каждого свой DeDust-пул. Все 3 продаются через P2P и СБП.
 
-Версия: 2026-10-05-003 — кнопки "Контракт + Пул", прямые продажи P2P и СБП.
+Версия: 2026-10-05-003 — упрощённое меню: 3 царя × (P2P + СБП + адреса).
 """
 from __future__ import annotations
 import asyncio
@@ -10,7 +10,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -30,10 +29,8 @@ from aiogram.types import (
 
 from api.payouts.tokens import (
     TOKENS,
-    DEFAULT_TOKEN,
     get_token,
     list_tokens,
-    find_by_master,
     short_master,
 )
 from api.payouts.config import (
@@ -44,7 +41,6 @@ from api.payouts.config import (
 from api.payouts.price_feed import PriceFeed
 from api.payouts.p2p import P2PClient
 from api.payouts.service import PayoutService
-from api.payouts.ton_watcher import TonWatcher, IncomingTransfer
 from api.payouts.models import PayoutMethod
 
 BOT_VERSION = "2026-10-05-003"
@@ -59,12 +55,12 @@ bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTM
 dp = Dispatcher(storage=MemoryStorage())
 router = Router()
 
+# === Отдельный PriceFeed для каждого царя (свой DeDust-пул) ===
 feeds: dict[str, PriceFeed] = {
     t.slug: PriceFeed(token_master=t.master, token_pool=t.pool, pool_label=t.pool_label, manual_rate=1.0)
     for t in list_tokens()
 }
 p2p_client = P2PClient()
-
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0") or "0")
 
 logger.info("BOT VERSION %s — feeds: %s, p2p configured: %s",
@@ -83,75 +79,77 @@ class WithdrawForm(StatesGroup):
     token_slug = State()
     amount = State()
     card = State()
+    phone = State()
 
 
-class DirectSaleForm(StatesGroup):
-    """Прямая продажа: P2P или СБП."""
-    token_slug = State()
-    amount = State()
-    payment_method = State()  # 'p2p' или 'sbp'
-    card_or_phone = State()
-
-
-# === UI BUILDERS ===
-
-def token_main_button(t) -> InlineKeyboardButton:
-    """Главная кнопка токена — открывает карточку с адресами."""
+def token_button(t) -> InlineKeyboardButton:
     return InlineKeyboardButton(
         text=f"{t.emoji} {t.symbol} {t.name}",
-        callback_data=f"open:{t.slug}",
+        callback_data=f"token:{t.slug}",
     )
 
 
 def main_menu() -> InlineKeyboardMarkup:
-    """Главное меню — 3 токена, на каждом открывается карточка."""
-    buttons = []
-    for t in list_tokens():
-        buttons.append([token_main_button(t)])
-    buttons.append([InlineKeyboardButton(text="💱 Курс USD/RUB", callback_data="usd_rub")])
-    buttons.append([InlineKeyboardButton(text="📊 Все P2P-объявления", callback_data="pools")])
+    """Главное меню: выбор одной из 3 серий ЦАРЬ."""
+    buttons = [[token_button(t)] for t in list_tokens()]
+    buttons.append([InlineKeyboardButton(text="📊 P2P-объявления", callback_data="pools")])
     buttons.append([InlineKeyboardButton(text="🔄 Обновить P2P", callback_data="p2p_refresh")])
     buttons.append([InlineKeyboardButton(text="🆘 Поддержка", callback_data="support")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def token_card_keyboard(slug: str) -> InlineKeyboardMarkup:
-    """Карточка токена: контракт + пул + действия (продать)."""
+def token_menu(slug: str) -> InlineKeyboardMarkup:
+    """Меню токена: курс DeDust-пула + 2 действия (P2P / СБП) + адреса."""
+    t = get_token(slug)
+    if not t:
+        return main_menu()
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📋 Адрес контракта + пула", callback_data=f"addr:{slug}")],
-        [InlineKeyboardButton(text="💱 Продать через P2P", callback_data=f"sell:p2p:{slug}")],
-        [InlineKeyboardButton(text="⚡ Продать через СБП", callback_data=f"sell:sbp:{slug}")],
-        [InlineKeyboardButton(text="🏦 Pull Of the Dust", callback_data=f"pool:{slug}")],
-        [InlineKeyboardButton(text="◀ Назад", callback_data="back")],
+        [InlineKeyboardButton(
+            text=f"💰 Продать {t.symbol} через P2P",
+            callback_data=f"sell_p2p:{t.slug}",
+        )],
+        [InlineKeyboardButton(
+            text=f"📲 Продать {t.symbol} через СБП",
+            callback_data=f"sell_sbp:{t.slug}",
+        )],
+        [InlineKeyboardButton(
+            text=f"📋 Адреса {t.symbol}",
+            callback_data=f"addresses:{t.slug}",
+        )],
+        [InlineKeyboardButton(
+            text=f"🏦 Курс DeDust-пула {t.symbol} ({t.pool_label})",
+            callback_data=f"pool:{t.slug}",
+        )],
+        [InlineKeyboardButton(text="◀ Назад к 3 царям", callback_data="back")],
     ])
 
 
-# === Handlers ===
-
 @router.message(CommandStart())
 async def cmd_start(message: Message):
-    await message.answer(
+    text = (
         f"👑 <b>ЦАРЬ Обменник</b> <i>v{BOT_VERSION}</i>\n\n"
-        "Обмен ЦАРЬ → USDT → RUB (P2P / СБП).\n\n"
-        "<b>Выбери токен — увидишь адрес контракта + пула + кнопки продажи:</b>",
-        reply_markup=main_menu(),
+        "Продай любой из 3 царей за RUB.\n"
+        "Способы получения: <b>P2P</b> (карта) или <b>СБП</b> (по телефону).\n\n"
+        "<b>3 серии ЦАРЬ — каждая со своим DeDust-пулом:</b>\n"
+        "  👑 BAAL_RA — DeDust USD₮-пул\n"
+        "  ♊  Гемини — DeDust TON-пул\n"
+        "  👑 С коронкой — DeDust TON-пул\n\n"
+        "Выбери серию ЦАРЬ:"
     )
+    await message.answer(text, reply_markup=main_menu())
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
         "<b>Помощь</b>\n\n"
-        "/start — главное меню\n"
-        "/version — версия бота\n"
-        "/tokens — все 3 серии\n"
-        "/p2p — P2P-объявления\n"
+        "/start — главное меню (3 царя)\n"
+        "/rate — общий курс ЦАРЬ\n"
+        "/tokens — все 3 серии + DeDust-пулы\n"
+        "/p2p — P2P-объявления RUB/USDT\n"
         "/p2p_refresh — сбросить кэш P2P\n"
-        "/withdraw — вывод (передепозит)\n\n"
-        "<b>Схема:</b>\n"
-        "  ЦАРЬ (TON) → продать через P2P → USDT на карту/СБП → RUB\n\n"
-        f"<b>Поддержка:</b> {SUPPORT_HANDLE}\n"
-        f"<b>Казначейство:</b> <code>{USDT_TREASURY_ADDRESS}</code>"
+        "/version — версия бота\n\n"
+        f"<b>Поддержка:</b> {SUPPORT_HANDLE}"
     )
 
 
@@ -159,8 +157,8 @@ async def cmd_help(message: Message):
 async def cmd_version(message: Message):
     await message.answer(
         f"🤖 <b>Версия бота:</b> <code>{BOT_VERSION}</code>\n"
+        f"<b>Царей в меню:</b> {len(list_tokens())} ({', '.join(t.slug for t in list_tokens())})\n"
         f"<b>Quote-метод:</b> {'✅ есть' if hasattr(PriceFeed, 'quote') else '❌ отсутствует'}\n"
-        f"<b>Фиды:</b> {len(feeds)} ({', '.join(feeds.keys())})\n"
         f"<b>P2P:</b> {'✅ ключ задан' if p2p_client.is_configured else '⚠️ mock (без P2P_API_KEY)'}\n"
         f"<b>P2P кэш:</b> {p2p_client.cache_size} ads, age {p2p_client.cache_age_sec:.1f}s, refreshes #{p2p_client.refresh_count}"
     )
@@ -168,269 +166,168 @@ async def cmd_version(message: Message):
 
 @router.message(Command("tokens"))
 async def cmd_tokens(message: Message):
-    lines = ["<b>Все серии ЦАРЬ:</b>\n"]
+    lines = [f"<b>Все серии ЦАРЬ + DeDust-пулы</b> <i>v{BOT_VERSION}</i>\n"]
     for t in list_tokens():
         lines.append(
             f"{t.emoji} <b>{t.name}</b> | {t.symbol}\n"
             f"  Master: <code>{t.master}</code>\n"
             f"  DeDust-пул: <code>{t.pool}</code> ({t.pool_label})\n"
+            f"  Мин. сумма: {t.min_tsar:,} ЦАРЬ"
         )
-    await message.answer("\n".join(lines))
+    await message.answer("\n\n".join(lines), reply_markup=main_menu())
 
 
-# === ОТКРЫТИЕ КАРТОЧКИ ТОКЕНА (по кнопке) ===
+@router.message(Command("rate"))
+async def cmd_rate(message: Message):
+    lines = [f"💱 <b>Курс DeDust-пулов</b> <i>v{BOT_VERSION}</i>\n"]
+    for t in list_tokens():
+        try:
+            q = await feeds[t.slug].quote(1_000_000)
+            if q.ok:
+                lines.append(
+                    f"{t.emoji} <b>{t.symbol}</b> ({t.pool_label})\n"
+                    f"  1 000 000 ЦАРЬ = <b>{q.rub_amount:,.4f} ₽</b>\n"
+                    f"  источник: {q.source}"
+                )
+            else:
+                lines.append(f"{t.emoji} {t.symbol}: ❌ {q.error or 'недоступен'}")
+        except Exception as e:
+            lines.append(f"{t.emoji} {t.symbol}: ❌ {e}")
+    await message.answer("\n\n".join(lines), reply_markup=main_menu())
 
-@router.callback_query(F.data.startswith("open:"))
-async def on_open_token(callback: CallbackQuery):
-    """Открывает карточку токена с адресами и кнопками продажи."""
+
+# === TOKEN MENU ===
+@router.callback_query(F.data.startswith("token:"))
+async def on_token_select(callback: CallbackQuery, state: FSMContext):
     slug = callback.data.split(":", 1)[1]
-    token = get_token(slug)
-    if not token:
-        await callback.answer("❌ Токен не найден", show_alert=True)
+    t = get_token(slug)
+    if not t:
+        await callback.message.edit_text("❌ Токен не найден")
         return
+    # Показываем мини-сводку + кнопки P2P/СБП/адреса/курс
     try:
         q = await feeds[slug].quote(1_000_000)
-        if q.ok:
-            price_line = (
-                f"\n💰 <b>Курс:</b> 1 000 000 ЦАРЬ = <b>{q.rub_amount:,.4f} ₽</b>\n"
-                f"   1 ЦАРЬ ≈ {q.tsar_price_usd*100:.4f} ¢\n"
-                f"   USD/RUB: {q.rate_used:.2f} ₽\n"
-                f"   Источник: <i>{q.source}</i>"
-            )
-        else:
-            price_line = f"\n⚠️ <i>Курс недоступен: {q.error}</i>"
+        rate_text = f"1 000 000 ЦАРЬ ≈ <b>{q.rub_amount:,.4f} ₽</b>" if q.ok else f"❌ {q.error}"
     except Exception as e:
-        price_line = f"\n⚠️ <i>Ошибка: {e}</i>"
-
+        rate_text = f"❌ {e}"
     text = (
-        f"{token.emoji} <b>{token.name}</b> | <code>{token.symbol}</code>{price_line}\n\n"
-        f"<b>📍 Адреса в TON:</b>\n"
-        f"  • Контракт (jetton master):\n    <code>{token.master}</code>\n"
-        f"  • DeDust-пул ({token.pool_label}):\n    <code>{token.pool}</code>\n\n"
-        f"<b>Как продать:</b>\n"
-        f"  1. Нажми <b>💱 Продать через P2P</b> — обмен на карту/СБП через P2P-партнёра\n"
-        f"  2. Нажми <b>⚡ Продать через СБП</b> — мгновенный перевод через СБП\n\n"
-        f"<b>Мин. сумма:</b> {token.min_tsar:,} ЦАРЬ"
+        f"{t.emoji} <b>{t.symbol} {t.name}</b>\n\n"
+        f"DeDust-пул ({t.pool_label}): {rate_text}\n\n"
+        f"Выбери способ получения RUB:"
     )
-    await callback.message.edit_text(text, reply_markup=token_card_keyboard(slug))
+    await callback.message.edit_text(text, reply_markup=token_menu(slug))
     await callback.answer()
 
 
-# === ПОКАЗ АДРЕСОВ ===
-
-@router.callback_query(F.data.startswith("addr:"))
-async def on_show_addr(callback: CallbackQuery):
-    """Показывает полные адреса контракта + пула с copy-кнопками."""
+# === P2P SELL ===
+@router.callback_query(F.data.startswith("sell_p2p:"))
+async def on_sell_p2p(callback: CallbackQuery, state: FSMContext):
     slug = callback.data.split(":", 1)[1]
-    token = get_token(slug)
-    if not token:
-        await callback.answer("❌ Токен не найден", show_alert=True)
+    t = get_token(slug)
+    if not t:
+        await callback.message.edit_text("❌ Токен не найден")
         return
-    text = (
-        f"📋 <b>{token.emoji} {token.symbol} — адреса</b>\n\n"
-        f"<b>Контракт (jetton master):</b>\n"
-        f"<code>{token.master}</code>\n\n"
-        f"<b>DeDust-пул ({token.pool_label}):</b>\n"
-        f"<code>{token.pool}</code>\n\n"
-        f"<i>Нажми на адрес чтобы скопировать. Это кошельки TON для jetton и для DeDust.</i>"
+    await state.update_data(token_slug=slug, sell_method="P2P")
+    await state.set_state(WithdrawForm.amount)
+    await callback.message.edit_text(
+        f"{t.emoji} <b>Продать {t.symbol} через P2P</b>\n\n"
+        f"Мин. сумма: {t.min_tsar:,} ЦАРЬ\n"
+        f"Получишь RUB на карту.\n\n"
+        "Введи количество ЦАРЬ для обмена:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀ Назад", callback_data=f"token:{slug}")],
+        ]),
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💱 Продать через P2P", callback_data=f"sell:p2p:{slug}")],
-        [InlineKeyboardButton(text="⚡ Продать через СБП", callback_data=f"sell:sbp:{slug}")],
-        [InlineKeyboardButton(text="◀ Назад", callback_data=f"open:{slug}")],
-    ])
-    await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
 
 
-# === КУРС ПУЛА ===
+# === СБП SELL ===
+@router.callback_query(F.data.startswith("sell_sbp:"))
+async def on_sell_sbp(callback: CallbackQuery, state: FSMContext):
+    slug = callback.data.split(":", 1)[1]
+    t = get_token(slug)
+    if not t:
+        await callback.message.edit_text("❌ Токен не найден")
+        return
+    await state.update_data(token_slug=slug, sell_method="SBP")
+    await state.set_state(WithdrawForm.amount)
+    await callback.message.edit_text(
+        f"{t.emoji} <b>Продать {t.symbol} через СБП</b>\n\n"
+        f"Мин. сумма: {t.min_tsar:,} ЦАРЬ\n"
+        f"Получишь RUB по номеру телефона через СБП.\n\n"
+        "Введи количество ЦАРЬ для обмена:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀ Назад", callback_data=f"token:{slug}")],
+        ]),
+    )
+    await callback.answer()
 
+
+# === ADDRESSES ===
+@router.callback_query(F.data.startswith("addresses:"))
+async def on_addresses(callback: CallbackQuery):
+    slug = callback.data.split(":", 1)[1]
+    t = get_token(slug)
+    if not t:
+        await callback.message.edit_text("❌ Токен не найден")
+        return
+    # Tonviewer-ссылки
+    pool_url = f"https://tonviewer.com/{t.pool}"
+    master_url = f"https://tonviewer.com/{t.master}"
+    treasury_url = f"https://tonviewer.com/{USDT_TREASURY_ADDRESS}"
+    await callback.message.edit_text(
+        f"📋 <b>Адреса {t.symbol} {t.name}</b>\n\n"
+        f"<b>Jetton master (контракт):</b>\n<code>{t.master}</code>\n"
+        f"🔗 <a href=\"{master_url}\">Открыть в Tonviewer</a>\n\n"
+        f"<b>DeDust-пул ({t.pool_label}):</b>\n<code>{t.pool}</code>\n"
+        f"🔗 <a href=\"{pool_url}\">Открыть в Tonviewer</a>\n\n"
+        f"<b>Казначейство (куда переводить ЦАРЬ):</b>\n<code>{USDT_TREASURY_ADDRESS}</code>\n"
+        f"🔗 <a href=\"{treasury_url}\">Открыть в Tonviewer</a>\n\n"
+        f"<i>Минималка: {t.min_tsar:,} ЦАРЬ</i>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀ Назад", callback_data=f"token:{slug}")],
+        ]),
+        disable_web_page_preview=True,
+    )
+    await callback.answer()
+
+
+# === POOL DETAIL ===
 @router.callback_query(F.data.startswith("pool:"))
 async def on_pool(callback: CallbackQuery):
     slug = callback.data.split(":", 1)[1]
-    token = get_token(slug)
-    if not token:
+    t = get_token(slug)
+    if not t:
         await callback.message.edit_text("❌ Токен не найден")
         return
     try:
         q = await feeds[slug].quote(1_000_000)
         if q.ok:
             text = (
-                f"🏦 <b>{token.symbol} — DeDust {token.pool_label}-пул</b>\n\n"
-                f"Адрес пула: <code>{token.pool}</code>\n"
-                f"Jetton master: <code>{token.master}</code>\n\n"
+                f"🏦 <b>{t.symbol} — DeDust {t.pool_label}-пул</b>\n\n"
+                f"Адрес пула: <code>{t.pool}</code>\n"
+                f"🔗 <a href=\"https://tonviewer.com/{t.pool}\">Открыть в Tonviewer</a>\n\n"
+                f"Jetton master: <code>{t.master}</code>\n\n"
                 f"1 000 000 ЦАРЬ = <b>{q.rub_amount:,.4f} ₽</b>\n"
-                f"1 ЦАРЬ ≈ {q.tsar_price_usd*100:.4f} ¢ ({q.tsar_price_usd:.10f} USD)\n"
+                f"1 ЦАРЬ ≈ {q.tsar_price_usd*100:.4f} ¢\n"
                 f"USD/RUB: {q.rate_used:.2f} ₽\n"
                 f"Источник: <i>{q.source}</i>"
             )
         else:
-            text = f"❌ Не удалось получить курс {token.symbol}: {q.error}"
+            text = f"❌ Не удалось получить курс {t.symbol}: {q.error}"
     except Exception as e:
         text = f"❌ Ошибка: {e}"
     await callback.message.edit_text(
         text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data=f"open:{slug}")]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀ Назад", callback_data=f"token:{slug}")],
+        ]),
+        disable_web_page_preview=True,
     )
     await callback.answer()
 
 
-# === ПРОДАЖА ЧЕРЕЗ P2P / СБП ===
-
-@router.callback_query(F.data.startswith("sell:"))
-async def on_sell(callback: CallbackQuery, state: FSMContext):
-    """Начало продажи: спрашиваем количество."""
-    _, method, slug = callback.data.split(":")
-    token = get_token(slug)
-    if not token:
-        await callback.answer("❌ Токен не найден", show_alert=True)
-        return
-    method_name = "P2P" if method == "p2p" else "СБП"
-    await state.update_data(token_slug=slug, payment_method=method)
-    await state.set_state(DirectSaleForm.amount)
-    if method == "p2p":
-        info = (
-            "💱 <b>Продажа через P2P</b>\n"
-            "Обмен ЦАРЬ → USDT → RUB на карту через P2P-партнёра.\n"
-            "Курс: лучший ₽/USDT среди 10 продавцов."
-        )
-    else:
-        info = (
-            "⚡ <b>Продажа через СБП</b>\n"
-            "Прямой перевод RUB через СБП (Тинькофф, Сбер и т.д.).\n"
-            "Курс: USDT → RUB по биржевому."
-        )
-    text = (
-        f"{token.emoji} <b>{token.symbol} {token.name}</b>\n\n"
-        f"{info}\n\n"
-        f"Введи количество ЦАРЬ для продажи (минимум {token.min_tsar:,}):"
-    )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="◀ Назад", callback_data=f"open:{slug}")],
-    ])
-    await callback.message.edit_text(text, reply_markup=kb)
-    await callback.answer()
-
-
-@router.message(DirectSaleForm.amount)
-async def on_direct_sale_amount(message: Message, state: FSMContext):
-    try:
-        amount = float(message.text.replace(",", ".").replace(" ", ""))
-    except ValueError:
-        await message.answer("❌ Введи число, например 1000000")
-        return
-    if amount < 250_000:
-        await message.answer("❌ Минимум 250 000 ЦАРЬ")
-        return
-    data = await state.get_data()
-    method = data.get("payment_method")
-    await state.update_data(amount=amount)
-    await state.set_state(DirectSaleForm.card_or_phone)
-    if method == "p2p":
-        prompt = "💳 <b>Введи номер карты для получения RUB:</b> (16 цифр)"
-    else:
-        prompt = "📱 <b>Введи номер телефона (СБП):</b> (+7XXXXXXXXXX)"
-    await message.answer(prompt)
-
-
-@router.message(DirectSaleForm.card_or_phone)
-async def on_direct_sale_finalize(message: Message, state: FSMContext):
-    data = await state.get_data()
-    slug = data.get("token_slug")
-    amount = data.get("amount")
-    method = data.get("payment_method")
-    user_input = message.text.strip().replace(" ", "")
-    token = get_token(slug)
-    if not token:
-        await message.answer("❌ Токен не найден")
-        await state.clear()
-        return
-
-    # Валидация
-    if method == "p2p":
-        if not (user_input.isdigit() and len(user_input) in (16, 19, 20)):
-            await message.answer("❌ Неверный формат. Введи 16 цифр номера карты")
-            return
-    else:  # sbp
-        clean = user_input.lstrip("+")
-        if not clean.isdigit() or len(clean) not in (10, 11, 12):
-            await message.answer("❌ Неверный формат. Введи телефон +7XXXXXXXXXX")
-            return
-
-    # Считаем курс и подбираем лучшего P2P-партнёра
-    try:
-        q = await feeds[slug].quote(amount)
-        if not q.ok:
-            await message.answer(f"❌ Курс недоступен: {q.error}")
-            await state.clear()
-            return
-        best_ad = await p2p_client.best_buy_ad() if method == "p2p" else None
-        if method == "p2p":
-            usdt_amount = q.usdt_amount
-            rub_amount = best_ad.price * usdt_amount if best_ad else q.rub_amount
-        else:
-            usdt_amount = q.usdt_amount
-            rub_amount = usdt_amount * USD_RUB_FALLBACK
-
-        ad_line = (
-            f"\n🤝 <b>P2P-партнёр:</b> {best_ad.nickname if best_ad else '—'} "
-            f"[{best_ad.merchant_level if best_ad else '—'}]\n"
-            f"   Курс: {best_ad.price if best_ad else 0:.2f} ₽/USDT"
-            if best_ad else ""
-        )
-
-        text = (
-            f"✅ <b>Заявка создана ({method.upper()})</b>\n\n"
-            f"{token.emoji} <b>{token.symbol} {token.name}</b>\n"
-            f"Сумма: {amount:,.0f} ЦАРЬ\n"
-            f"Получишь: <b>{rub_amount:,.2f} ₽</b>\n"
-            f"USDT: {usdt_amount:,.4f}\n"
-            f"Курс ЦАРЬ: {q.tsar_price_usd*100:.4f} ¢\n"
-            f"USD/RUB: {q.rate_used:.2f} ₽{ad_line}\n\n"
-            f"<b>Способ:</b> {'💳 карта' if method == 'p2p' else '📱 СБП'}\n"
-            f"<b>Получатель:</b> <code>{user_input}</code>\n\n"
-            f"💎 <b>Переведи ЦАРЬ на jetton-адрес проекта:</b>\n"
-            f"<code>{token.master}</code>\n\n"
-            f"💵 <b>Или отправь напрямую через DeDust:</b>\n"
-            f"<code>{token.pool}</code>\n\n"
-            f"После прихода ЦАРЬ заявка автоматически связана с тобой."
-        )
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="◀ В главное меню", callback_data="back")],
-        ])
-        await message.answer(text, reply_markup=kb)
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
-    await state.clear()
-
-
-# === WITHDRAW (старая форма, через перевод в казначейство) ===
-
-@router.message(Command("withdraw"))
-async def cmd_withdraw(message: Message, state: FSMContext):
-    await state.set_state(WithdrawForm.token_slug)
-    await message.answer("👑 Выбери токен для вывода:", reply_markup=main_menu())
-
-
-@router.callback_query(F.data.startswith("token:"))
-async def on_token_select(callback: CallbackQuery, state: FSMContext):
-    slug = callback.data.split(":", 1)[1]
-    token = get_token(slug)
-    if not token:
-        await callback.message.answer("❌ Токен не найден")
-        return
-    await state.update_data(token_slug=slug)
-    await state.set_state(WithdrawForm.amount)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏦 Курс токена (DeDust)", callback_data=f"pool:{slug}")],
-        [InlineKeyboardButton(text="◀ Назад", callback_data="back")],
-    ])
-    await callback.message.edit_text(
-        f"{token.emoji} Выбран: <b>{token.symbol} {token.name}</b>\n\n"
-        f"Введи количество ЦАРЬ для обмена:"
-    , reply_markup=kb)
-
-
+# === AMOUNT ===
 @router.message(WithdrawForm.amount)
 async def on_amount(message: Message, state: FSMContext):
     try:
@@ -441,42 +338,72 @@ async def on_amount(message: Message, state: FSMContext):
     if amount < 250_000:
         await message.answer("❌ Минимум 250 000 ЦАРЬ")
         return
+    data = await state.get_data()
+    sell_method = data.get("sell_method", "P2P")
     await state.update_data(amount=amount)
-    await state.set_state(WithdrawForm.card)
-    await message.answer(f"💳 <b>Сумма:</b> {amount:,.0f} ЦАРЬ\n\nВведи номер карты (16 цифр):")
+    if sell_method == "SBP":
+        await state.set_state(WithdrawForm.phone)
+        await message.answer(
+            f"📱 <b>Сумма:</b> {amount:,.0f} ЦАРЬ\n\n"
+            "Введи номер телефона для получения RUB через СБП\n"
+            "(формат: +7XXXXXXXXXX):"
+        )
+    else:
+        await state.set_state(WithdrawForm.card)
+        await message.answer(
+            f"💳 <b>Сумма:</b> {amount:,.0f} ЦАРЬ\n\n"
+            "Введи номер карты для получения RUB (16 цифр):"
+        )
 
 
+# === CARD (P2P) ===
 @router.message(WithdrawForm.card)
 async def on_card(message: Message, state: FSMContext):
     card = message.text.strip().replace(" ", "")
     if not (card.isdigit() and len(card) in (16, 19, 20)):
         await message.answer("❌ Неверный формат. Введи 16 цифр номера карты")
         return
+    await _create_payout(message, state, method=PayoutMethod.CARD_RU, recipient=card, method_label="P2P")
+
+
+# === PHONE (СБП) ===
+@router.message(WithdrawForm.phone)
+async def on_phone(message: Message, state: FSMContext):
+    phone = message.text.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    if not (phone.startswith("+") and phone[1:].isdigit() and 10 <= len(phone) <= 15):
+        await message.answer("❌ Неверный формат. Введи +7XXXXXXXXXX")
+        return
+    await _create_payout(message, state, method=PayoutMethod.SBP, recipient=phone, method_label="СБП")
+
+
+async def _create_payout(message: Message, state: FSMContext, *, method, recipient: str, method_label: str) -> None:
     data = await state.get_data()
     slug = data.get("token_slug")
     amount = data.get("amount")
     user_id = message.from_user.id
-    token = get_token(slug)
+    t = get_token(slug)
+    if not t:
+        await message.answer("❌ Токен не найден")
+        await state.clear()
+        return
     try:
         result = await _service_for(slug).payout(
             user_id=user_id,
             tsar_amount=amount,
-            recipient=card,
-            method=PayoutMethod.CARD_RU,
+            recipient=recipient,
+            method=method,
         )
         if result.ok:
-            ad = result.p2p_ad
+            ad = result.payout
             await message.answer(
-                f"✅ <b>Заявка создана</b>\n\n"
-                f"Токен: {token.emoji} {token.symbol} {token.name}\n"
-                f"ID: <code>{result.payout.id}</code>\n"
+                f"✅ <b>Заявка создана</b> <i>({method_label})</i>\n\n"
+                f"Токен: {t.emoji} {t.symbol} {t.name}\n"
+                f"ID: <code>{ad.id}</code>\n"
                 f"Сумма: {amount:,.0f} ЦАРЬ\n"
-                f"Получишь: <b>{result.payout.amount_rub:.2f} ₽</b>\n"
-                f"На карту: <code>{card[:6]}****{card[-4:]}</code>\n\n"
-                f"🤝 P2P-партнёр: {ad.nickname if ad else 'mock'}\n"
-                f"Курс: {ad.price if ad else 0:.2f} ₽/USDT\n\n"
-                f"Переведи ЦАРЬ на:\n<code>{USDT_TREASURY_ADDRESS}</code>\n"
-                f"После прихода ЦАРЬ бот сам определит серию и свяжет с заявкой."
+                f"Получишь: <b>{ad.amount_rub:.2f} ₽</b>\n"
+                f"Получатель: <code>{recipient}</code>\n\n"
+                f"🤝 P2P-партнёр: {getattr(ad, 'p2p_partner', 'mock')}\n"
+                f"Переведи ЦАРЬ на:\n<code>{USDT_TREASURY_ADDRESS}</code>"
             )
         else:
             await message.answer(f"❌ Ошибка: {result.error}")
@@ -485,8 +412,7 @@ async def on_card(message: Message, state: FSMContext):
     await state.clear()
 
 
-# === P2P команды ===
-
+# === P2P LIST ===
 @router.message(Command("p2p"))
 async def cmd_p2p(message: Message):
     await show_p2p_ads(message, edit=False)
@@ -568,19 +494,6 @@ async def _format_p2p_ads(ads, *, prefix: str = "") -> str:
     return body
 
 
-# === Прочие callback'и ===
-
-@router.callback_query(F.data == "usd_rub")
-async def on_usd_rub(callback: CallbackQuery):
-    await callback.message.edit_text(
-        f"💱 <b>USD/RUB</b>\n\n"
-        f"Текущий fallback: {USD_RUB_FALLBACK:.2f} ₽\n"
-        f"Источник: exchangerate-api.com",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
-    )
-    await callback.answer()
-
-
 @router.callback_query(F.data == "pools")
 async def on_pools(callback: CallbackQuery):
     await show_p2p_ads(callback.message, edit=True)
@@ -600,54 +513,28 @@ async def on_support(callback: CallbackQuery):
 async def on_back(callback: CallbackQuery):
     await callback.message.edit_text(
         f"👑 <b>ЦАРЬ Обменник</b> <i>v{BOT_VERSION}</i>\n\n"
-        "Выбери токен:",
+        "Выбери серию ЦАРЬ:",
         reply_markup=main_menu()
     )
     await callback.answer()
 
 
-# === TonWatcher ===
-
-async def on_incoming_transfer(t: IncomingTransfer) -> None:
-    emoji = t.token.emoji if t.token else "❓"
-    name = t.token.name if t.token else "НЕИЗВЕСТНЫЙ ТОКЕН"
-    text = (
-        f"{emoji} <b>Входящий перевод: {name}</b>\n\n"
-        f"Master: <code>{short_master(t.jetton_master)}</code>\n"
-        f"Сумма: <b>{t.amount:,.4f}</b>\n"
-        f"Sender: <code>{short_master(t.sender)}</code>\n"
-        f"TX: <code>{t.tx_hash[:16]}…</code>"
-    )
-    if ADMIN_CHAT_ID:
-        try:
-            await bot.send_message(ADMIN_CHAT_ID, text)
-        except Exception as e:
-            logger.warning("send to admin failed: %s", e)
-    else:
-        logger.info("incoming: %s", text.replace("<b>", "").replace("</b>", ""))
-
-
 async def main():
     dp.include_router(router)
     logger.info("🚀 Bot %s starting...", BOT_VERSION)
-    logger.info("feeds: %s", {k: f"manual={f.manual_rate}" for k, f in feeds.items()})
-    # Pre-warm P2P cache
+    logger.info("feeds: %s", list(feeds.keys()))
+    logger.info("p2p: configured=%s, refresh=%s",
+                p2p_client.is_configured, hasattr(p2p_client, 'refresh'))
     try:
         await p2p_client.get_buy_ads()
         logger.info("P2P cache pre-warmed: %d ads", p2p_client.cache_size)
     except Exception as e:
         logger.warning("P2P pre-warm failed: %s", e)
     await bot.delete_webhook(drop_pending_updates=True)
-    watcher = TonWatcher(poll_interval_sec=15.0, on_transfer=on_incoming_transfer)
-    watcher.start()
-    logger.info("TonWatcher started")
-    try:
-        await dp.start_polling(bot, skip_updates=True)
-    finally:
-        await watcher.stop()
-        for f in feeds.values():
-            await f.close()
-        await p2p_client.close()
+    await dp.start_polling(bot, skip_updates=True)
+    for f in feeds.values():
+        await f.close()
+    await p2p_client.close()
 
 
 if __name__ == "__main__":
