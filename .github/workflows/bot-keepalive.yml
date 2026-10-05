@@ -3,7 +3,7 @@ name: tsar-bot-keepalive
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/5 * * * *'  # каждые 5 минут
+    - cron: '*/5 * * * *'
 
 permissions:
   contents: read
@@ -12,6 +12,8 @@ jobs:
   bot:
     runs-on: ubuntu-latest
     timeout-minutes: 350
+    env:
+      PYTHONPATH: src
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,7 +38,7 @@ jobs:
           P2P_API_KEY: ${{ secrets.P2P_API_KEY }}
         run: |
           cd $GITHUB_WORKSPACE
-          PYTHONPATH=src while true; do
+          while true; do
             echo "[$(date)] starting bot..."
             python -m bot.main 2>&1 | tee -a bot.log || echo "[$(date)] bot crashed, restarting in 3s"
             sleep 3
