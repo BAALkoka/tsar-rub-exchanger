@@ -3,15 +3,14 @@
 Источники (по убыванию приоритета):
   1. CoinGecko Pro  (требует COINGECKO_API_KEY)
   2. CoinGecko Free
-  3. GeckoTerminal DeDust-пул TSAR/USDT (РЕАЛЬНЫЙ КУРС)
+  3. GeckoTerminal DeDust-пул (РЕАЛЬНЫЙ КУРС)
   4. Manual override
 
-Все цены возвращаются в RUB за 1 ЦАРЬ.
+Поддержка двух типов пулов:
+  - USDT-пул (BAAL_RA): base_token_price_usd есть сразу
+  - TON-пул (GEMINI/CROWN): нужно умножить base_token_price_native_currency на TON/USD
 
-API метода:
-  - `await quote(tsar_amount)` -> PriceQuote с rub_amount, tsar_price_usd,
-    usd_amount, rate_used, source.
-  - `await get_rate()` -> базовая PriceQuote (RUB за 1 ЦАРЬ).
+Все цены возвращаются в RUB за 1 ЦАРЬ.
 """
 from __future__ import annotations
 
@@ -36,9 +35,9 @@ from .config import (
 logger = logging.getLogger(__name__)
 
 
-# Запасные пулы для наследственных ЦАРЬ-мастеров (если DeDust у основного пуст)
+# Запасные пулы (наследие) — все три серии ликвидны в основных DeDust-пулах
 _LEGACY_POOLS = {
-    TSAR_LEGACY_GEMINI: TSAR_PRIMARY_POOL,   # все три серии ликвидны в одном пуле USDt/ЦАРЬ
+    TSAR_LEGACY_GEMINI: TSAR_PRIMARY_POOL,
     TSAR_LEGACY_CROWN: TSAR_PRIMARY_POOL,
 }
 
@@ -46,12 +45,13 @@ _LEGACY_POOLS = {
 @dataclass
 class PriceQuote:
     rate: float            # RUB за 1 ЦАРЬ
-    source: str            # 'coingecko-pro' / 'coingecko-free' / 'geckoterminal' / 'manual'
+    source: str
     token_master: str
     tsar_price_usd: float  # USD за 1 ЦАРЬ
-    usd_amount: float      # USD за N ЦАРЬ (заполняется в quote())
-    rub_amount: float      # RUB за N ЦАРЬ (заполняется в quote())
-    rate_used: float       # USD/RUB, использованный в расчёте
+    usd_amount: float
+    rub_amount: float
+    rate_used: float       # USD/RUB
+    pool_label: str = ""
     ok: bool = True
     error: Optional[str] = None
     fetched_at: float = 0.0
@@ -81,6 +81,7 @@ class PriceFeed:
         coingecko_token_id: Optional[str] = None,
         token_master: str = TSAR_MASTER,
         token_pool: Optional[str] = None,
+        pool_label: str = "",   # 'USDT' или 'TON'
         timeout_sec: float = 8.0,
     ):
         self.coingecko_api_key = (
@@ -92,6 +93,7 @@ class PriceFeed:
         ).strip() or None
         self.token_master = token_master
         self.token_pool = token_pool or _LEGACY_POOLS.get(token_master, TSAR_PRIMARY_POOL)
+        self.pool_label = pool_label
         self.timeout = timeout_sec
         self._cache: Optional[PriceQuote] = None
         self._cache_lock = asyncio.Lock()
@@ -104,24 +106,15 @@ class PriceFeed:
         await self._client.aclose()
 
     async def quote(self, tsar_amount: float) -> PriceQuote:
-        """Главный метод: возвращает полную квоту для tsar_amount ЦАРЬ.
-
-        Использует кэш (60 сек). На ошибке каждого источника логирует и
-        пробует следующий. Если все провалились — возвращает ok=False с error.
-        """
+        """Главный метод: возвращает полную квоту для tsar_amount ЦАРЬ."""
         try:
             base = await self.get_rate()
             if not base.ok:
                 return PriceQuote(
-                    rate=0,
-                    source=base.source,
-                    token_master=self.token_master,
-                    tsar_price_usd=0,
-                    usd_amount=0,
-                    rub_amount=0,
-                    rate_used=0,
-                    ok=False,
-                    error=base.error,
+                    rate=0, source=base.source, token_master=self.token_master,
+                    tsar_price_usd=0, usd_amount=0, rub_amount=0, rate_used=0,
+                    pool_label=self.pool_label,
+                    ok=False, error=base.error,
                 )
             usd_amount = tsar_amount * base.tsar_price_usd
             rub_amount = tsar_amount * base.rate
@@ -133,6 +126,7 @@ class PriceFeed:
                 usd_amount=usd_amount,
                 rub_amount=rub_amount,
                 rate_used=base.rate_used,
+                pool_label=base.pool_label,
                 ok=True,
                 fetched_at=base.fetched_at,
             )
@@ -141,18 +135,16 @@ class PriceFeed:
             return PriceQuote(
                 rate=0, source="error", token_master=self.token_master,
                 tsar_price_usd=0, usd_amount=0, rub_amount=0, rate_used=0,
+                pool_label=self.pool_label,
                 ok=False, error=str(e),
             )
 
     async def get_rate(self) -> PriceQuote:
-        """Базовый курс: RUB за 1 ЦАРЬ + USD за 1 ЦАРЬ + USD/RUB."""
         if self._cache and self._cache.is_fresh(self.CACHE_TTL) and self._cache.ok:
             return self._cache
-
         async with self._cache_lock:
             if self._cache and self._cache.is_fresh(self.CACHE_TTL) and self._cache.ok:
                 return self._cache
-
             for source_fn in (
                 self._from_coingecko_pro,
                 self._from_coingecko_free,
@@ -168,19 +160,11 @@ class PriceFeed:
                         logger.warning("source %s: %s", source_fn.__name__, quote.error)
                 except Exception as e:
                     logger.warning("source %s raised: %s", source_fn.__name__, e)
-
-            # все источники упали — возвращаем ok=False с fallback'ом
             err = PriceQuote(
-                rate=0,
-                source="none",
-                token_master=self.token_master,
-                tsar_price_usd=0,
-                usd_amount=0,
-                rub_amount=0,
-                rate_used=0,
-                ok=False,
-                error="All price sources failed",
-                fetched_at=time.time(),
+                rate=0, source="none", token_master=self.token_master,
+                tsar_price_usd=0, usd_amount=0, rub_amount=0, rate_used=0,
+                pool_label=self.pool_label,
+                ok=False, error="All price sources failed", fetched_at=time.time(),
             )
             self._cache = err
             return err
@@ -193,15 +177,13 @@ class PriceFeed:
             f"{self.COINGECKO_BASE}/simple/price"
             f"?ids={self.coingecko_token_id}&vs_currencies=usd,rub"
         )
-        r = await self._client.get(
-            url, headers={"x-cg-pro-api-key": self.coingecko_api_key}
-        )
+        r = await self._client.get(url, headers={"x-cg-pro-api-key": self.coingecko_api_key})
         r.raise_for_status()
         data = r.json().get(self.coingecko_token_id)
         if not data or "rub" not in data:
             return None
         rub = float(data["rub"])
-        usd = float(data.get("usd", 0))
+        usd = float(data.get("usd") or 0)
         return self._make_quote(rub, usd, "coingecko-pro")
 
     # === CoinGecko Free ===
@@ -218,15 +200,16 @@ class PriceFeed:
         if not data or "rub" not in data:
             return None
         rub = float(data["rub"])
-        usd = float(data.get("usd", 0))
+        usd = float(data.get("usd") or 0)
         return self._make_quote(rub, usd, "coingecko-free")
 
-    # === GeckoTerminal (DeDust TSAR/USDT пул) — РЕАЛЬНЫЙ КУРС ===
+    # === GeckoTerminal DeDust ===
     async def _from_geckoterminal(self) -> Optional[PriceQuote]:
         if not self.token_pool:
             return PriceQuote(
                 rate=0, source="geckoterminal", token_master=self.token_master,
                 tsar_price_usd=0, usd_amount=0, rub_amount=0, rate_used=0,
+                pool_label=self.pool_label,
                 ok=False, error="no token_pool configured",
             )
         url = (
@@ -238,30 +221,53 @@ class PriceFeed:
             return PriceQuote(
                 rate=0, source="geckoterminal", token_master=self.token_master,
                 tsar_price_usd=0, usd_amount=0, rub_amount=0, rate_used=0,
-                ok=False, error=f"GeckoTerminal HTTP {r.status_code}: {r.text[:200]}",
+                pool_label=self.pool_label,
+                ok=False, error=f"GeckoTerminal HTTP {r.status_code}",
             )
         payload = r.json()
-        pool_data = (payload.get("data") or {}).get("attributes") or {}
-        if not pool_data:
+        attrs = (payload.get("data") or {}).get("attributes") or {}
+        if not attrs:
             return PriceQuote(
                 rate=0, source="geckoterminal", token_master=self.token_master,
                 tsar_price_usd=0, usd_amount=0, rub_amount=0, rate_used=0,
-                ok=False, error="GeckoTerminal: empty data.attributes",
+                pool_label=self.pool_label,
+                ok=False, error="GeckoTerminal: empty data",
             )
-        price_usd_raw = pool_data.get("base_token_price_usd") or pool_data.get("price_in_usd")
-        if not price_usd_raw:
-            return PriceQuote(
-                rate=0, source="geckoterminal", token_master=self.token_master,
-                tsar_price_usd=0, usd_amount=0, rub_amount=0, rate_used=0,
-                ok=False, error=f"GeckoTerminal: no base_token_price_usd in pool",
-            )
-        price_usd = float(price_usd_raw)
+
+        # Цена базового токена (ЦАРЬ)
+        price_usd = float(attrs.get("base_token_price_usd") or 0)
+        price_native = float(attrs.get("base_token_price_native_currency") or 0)  # ЦАРЬ в TON
+
+        # Если USD-цена пустая или подозрительно маленькая — TON-пул с микроценой
+        # пересчитываем через native × TON/USD
+        if price_usd <= 0 or price_usd < 1e-12:
+            if price_native > 0:
+                ton_usd = await self._fetch_ton_usd()
+                price_usd = price_native * ton_usd
+            else:
+                return PriceQuote(
+                    rate=0, source="geckoterminal", token_master=self.token_master,
+                    tsar_price_usd=0, usd_amount=0, rub_amount=0, rate_used=0,
+                    pool_label=self.pool_label,
+                    ok=False, error="GeckoTerminal: no price fields",
+                )
+
         usd_rub = await self._fetch_usd_rub()
         rub = price_usd * usd_rub
         return self._make_quote(rub, price_usd, "geckoterminal", usd_rub)
 
+    async def _fetch_ton_usd(self) -> float:
+        """TON/USD курс через CoinGecko."""
+        try:
+            r = await self._client.get(
+                f"{self.COINGECKO_BASE}/simple/price?ids=the-open-network&vs_currencies=usd"
+            )
+            r.raise_for_status()
+            return float(r.json().get("the-open-network", {}).get("usd") or 0)
+        except Exception:
+            return 0.0
+
     async def _fetch_usd_rub(self) -> float:
-        """Получает курс USD/RUB. Fallback на USD_RUB_FALLBACK."""
         try:
             r = await self._client.get("https://api.exchangerate-api.com/v4/latest/USD")
             r.raise_for_status()
@@ -276,18 +282,15 @@ class PriceFeed:
             return PriceQuote(
                 rate=0, source="manual", token_master=self.token_master,
                 tsar_price_usd=0, usd_amount=0, rub_amount=0, rate_used=0,
+                pool_label=self.pool_label,
                 ok=False, error="manual_rate not set",
             )
-        # если manual задан в USD — пересчитаем; иначе считаем что manual уже в RUB
         usd_rub = await self._fetch_usd_rub()
         return self._make_quote(self.manual_rate, self.manual_rate / usd_rub, "manual", usd_rub)
 
     def _make_quote(
-        self,
-        rate_rub: float,
-        tsar_price_usd: float,
-        source: str,
-        usd_rub: Optional[float] = None,
+        self, rate_rub: float, tsar_price_usd: float,
+        source: str, usd_rub: Optional[float] = None,
     ) -> PriceQuote:
         return PriceQuote(
             rate=rate_rub,
@@ -297,6 +300,7 @@ class PriceFeed:
             usd_amount=0,
             rub_amount=0,
             rate_used=usd_rub if usd_rub is not None else USD_RUB_FALLBACK,
+            pool_label=self.pool_label,
             ok=True,
             fetched_at=time.time(),
         )
