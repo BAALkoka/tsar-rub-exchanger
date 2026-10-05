@@ -1,77 +1,88 @@
-# 👑 Tsar RUB Exchanger
+# 👑 ЦАРЬ Rub Exchanger
 
-Telegram-бот + FastAPI для off-ramp токенов ЦАРЬ → RUB на карту.
+Telegram-бот для продажи 3 серий токенов ЦАРЬ (BAAL_RA, Гемини, С-коронкой) за RUB через **P2P** или **СБП**.
 
-## Возможности
+## 🌟 Возможности
 
-- 3 серии ЦАРЬ с emoji-атрибутом 👑:
-  - 👑 **Царь BAAL_RA** — основной
-  - ♊ **Царь Гемини** — Gemini-серия
-  - 👑 **Царь с коронкой** — коллекционная
-- **TON auto-detect** — watcher опрашивает tonapi.io каждые 15с
-- **Автоопределение токена** по jetton-master при входящем IP-переводе
-- **P2P Market** — через WalletBot API (`X-API-Key`) — находит трейдеров BUY USDT
-- **DeDust-пул TSAR/USDT** — реальный курс через GeckoTerminal
-- **FastAPI endpoints** — `/v1/quote`, `/v1/payouts`, `/v1/pools`, `/ton/notify`
-- **GitHub Actions workflow** — бот живёт 24/7 бесплатно
+- **3 серии ЦАРЬ**, каждая со своим DeDust-пулом
+- **P2P** — продажа USDT с выводом на карту RUB
+- **СБП** — продажа USDT с выводом по номеру телефона
+- **Курс DeDust-пула** в реальном времени (GeckoTerminal)
+- **P2P-объявления** с кэшем 30 сек (10 mock-продавцов)
+- **TonWatcher** для авто-определения токена по входящему jetton
+- **FastAPI** для HTTP-endpoints (quote, payout)
 
-## Архитектура
+## 🤖 Бот в Telegram
+
+[@BAAL_NIK_BOT](https://t.me/BAAL_NIK_BOT)
+
+Команды:
+- `/start` — главное меню
+- `/rate` — общий курс ЦАРЬ
+- `/pool <slug>` — курс конкретного DeDust-пула (BAAL_RA / GEMINI / CROWN)
+- `/tokens` — все 3 серии + адреса
+- `/p2p` — P2P-объявления RUB/USDT
+- `/p2p_refresh` — сбросить кэш P2P
+- `/version` — версия бота
+
+## 🪙 3 серии ЦАРЬ
+
+| Серия | Slug | DeDust-пул | Master |
+|---|---|---|---|
+| 👑 BAAL_RA | `BAAL_RA` | USD₮-пул | `EQC5D3XIrc777bcr8EOQ2_ZBMPuePUqT-zzWTr9-pJEoe7uf` |
+| ♊ Гемини | `GEMINI` | TON-пул | `EQBcUttXk7IhCF23ZghXNc7HY9v3_SAuhsWgW_YHntHsUYtM` |
+| 👑 С коронкой | `CROWN` | TON-пул | `EQB2T7svf6RzbvYc99jWBfj6n9P3gUsyR4AiiBLgPYIwqKX2` |
+
+🔗 Все адреса доступны в боте через кнопку `📋 Адреса`.
+
+## 🏗 Архитектура
 
 ```
 src/
-├── bot/main.py              # Telegram-бот + TonWatcher
-└── api/payouts/
-    ├── tokens.py            # 3 серии ЦАРЬ + emoji 👑 + find_by_master
-    ├── price_feed.py        # GeckoTerminal → DeDust-пул TSAR/USDT
-    ├── p2p.py               # WalletBot P2P Market client
-    ├── ton_watcher.py       # Polling tonapi.io + detect_token
-    ├── service.py           # ЦАРЬ → USDT → P2P → RUB → карта
-    ├── api.py               # FastAPI: /v1/quote, /v1/payouts, /ton/notify
-    └── config.py            # MASTER-адреса, пулы, treasury
+├── bot/
+│   └── main.py              # Telegram-бот (aiogram)
+├── api/payouts/
+│   ├── tokens.py            # Реестр 3 серий ЦАРЬ
+│   ├── price_feed.py        # Курс DeDust-пулов (GeckoTerminal)
+│   ├── p2p.py               # P2P-клиент (10 mock + 3-tier fallback)
+│   ├── service.py           # PayoutService
+│   ├── ton_watcher.py       # TonWatcher для входящих переводов
+│   └── config.py            # USDT_TREASURY_ADDRESS, USD_RUB_FALLBACK
+└── tests/
+    ├── test_price_feed.py
+    ├── test_p2p.py
+    └── test_tokens.py
 ```
 
-## Запуск
+## 💱 Курс
 
-```bash
-export TELEGRAM_BOT_TOKEN="..."
-export P2P_API_KEY="..."          # WalletBot (опц.)
-export TONAPI_TOKEN="..."         # tonapi.io (опц.)
-export ADMIN_CHAT_ID="..."        # для уведомлений о IP-переводах
-export PYTHONPATH=src
-python3 -m bot.main
-```
+1. Получаем курс USDT→RUB (exchangerate-api.com, fallback = 89.40 ₽)
+2. Получаем цену ЦАРЬ в USDT (GeckoTerminal, DeDust-пул)
+3. Перемножаем: `1 ЦАРЬ = price_usdt × rate_usd_rub`
+4. Для 3 серий — 3 разных DeDust-пула → 3 разных цены
 
-## Команды бота
+## 🤝 P2P
 
-- `/start` — главное меню (3 токена 👑)
-- `/rate` — курс ЦАРЬ
-- `/pool` — курс DeDust-пула TSAR/USDT
-- `/tokens` — все 3 серии
-- `/withdraw` — вывод RUB на карту
-- `/help` — справка
+- **Tier 1:** WalletBot P2P Market (если задан `P2P_API_KEY`)
+- **Tier 2:** Public API (если доступно)
+- **Tier 3:** Mock — 10 продавцов (Diamond/Platinum/Gold) с реалистичной вариативностью ±1%
 
-## Кнопки
+## 🔐 Безопасность
 
-```
-👑 ЦАРЬ Царь BAAL_RA (EQC5D3…Eoe7uf)
-♊ ЦАРЬ♊ Царь Гемини (EQBcUt…HsUYtM)
-👑 ЦАРЬ👑 Царь с коронкой (EQB2T7…IwqKX2)
-💱 Курс ЦАРЬ
-📊 P2P-объявления
-🏦 Курс DeDust-пула
-🆘 Поддержка
-```
+- **Никогда не храним приватные ключи** от P2P в коде
+- P2P API ключи добавляются через GitHub Secrets (вручную)
+- Mock-режим работает без ключей
 
-## TON-казначейство
+## 📜 История
 
-USDT приём на кошелёк казначейства: `UQA5gfkm8i4DutEDkMvjmTi3N8VC46yZHKAK_nnpYjawvCet`
+- **v2026-10-05-003** — 3 царя × (P2P + СБП + Адреса + Курс), упрощённое меню
+- **v2026-10-05-002** — P2P refresh + 10 mock sellers + 3 DeDust-пула
+- **v2026-10-05-001** — первый рабочий бот с моно-ЦАРЬ
 
-Когда приходит jetton — автодетект по master-адресу:
-- `EQC5D3XIrc777bcr8EOQ2_ZBMPuePUqT-zzWTr9-pJEoe7uf` → BAAL_RA
-- `EQBcUttXk7IhCF23ZghXNc7HY9v3_SAuhsWgW_YHntHsUYtM` → Гемини
-- `EQB2T7svf6RzbvYc99jWBfj6n9P3gUsyR4AiiBLgPYIwqKX2` → С коронкой
+## 📜 Лицензия
 
-## Deploy
+MIT
 
-Render Blueprint: `infra/render.yaml`
-GitHub Actions: `.github/workflows/bot-keepalive.yml`
+## 📞 Контакты
+
+Telegram: [@BAAL_NIK](https://t.me/BAAL_NIK) · [@BAAL_NIK_2505lis](https://t.me/BAAL_NIK_2505lis) · [https://baal.tb.ru/2505lis](https://baal.tb.ru/2505lis)
