@@ -1,177 +1,189 @@
-"""FastAPI эндпоинты: /v1/quote, /v1/payouts, /health, /ton/notify."""
+"""FastAPI приложение: /v1/quote, /v1/payouts, /v1/pools, /ton/notify, /health."""
 from __future__ import annotations
+import asyncio
 import logging
+import os
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .config import TSAR_MASTER, TSAR_PRIMARY_POOL, USDT_TREASURY_ADDRESS
+from .config import (
+    USD_RUB_FALLBACK,
+    USDT_TREASURY_ADDRESS,
+    SUPPORT_HANDLE,
+    ADMIN_CHAT_ID,
+)
+from .tokens import list_tokens, get_token, find_by_master, short_master, TOKENS
 from .price_feed import PriceFeed
-from .p2p import P2PClient, P2PError, P2PNoAds
+from .p2p import P2PClient, P2PError
 from .service import PayoutService
-from .models import Payout, PayoutMethod, PayoutStatus
-from .tokens import find_by_master, short_master
+from .models import PayoutMethod
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("tsar.api")
+logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Tsar API", version="1.0.0")
-# Цена через GeckoTerminal (DeDust USDT-пул) с fallback
-feed = PriceFeed(token_pool=TSAR_PRIMARY_POOL, manual_rate=1.0)
-p2p_client = P2PClient()
-payout_service = PayoutService(p2p_client=p2p_client, price_feed=feed)
+app = FastAPI(
+    title="Tsar RUB Exchanger",
+    description="Off-ramp ЦАРЬ → USDT → P2P → RUB → карта. 3 серии ЦАРЬ с разными DeDust-пулами.",
+    version="1.0.0",
+)
+
+# Создаём по фиду на каждый токен (с его DeDust-пулом)
+feeds: dict[str, PriceFeed] = {
+    t.slug: PriceFeed(token_master=t.master, token_pool=t.pool, pool_label=t.pool_label)
+    for t in list_tokens()
+}
+p2p = P2PClient()
+
+
+def _service(slug: str) -> PayoutService:
+    return PayoutService(p2p_client=p2p, price_feed=feeds[slug])
 
 
 class QuoteRequest(BaseModel):
-    tsar_amount: float = Field(..., gt=0)
-    slippage_pct: float = Field(2.0, ge=0, le=50)
+    tsar_amount: float = Field(..., gt=0, description="Количество ЦАРЬ")
+    token: str = Field(default="BAAL_RA", description="Слаг токена: BAAL_RA, GEMINI, CROWN")
 
 
 class QuoteResponse(BaseModel):
+    ok: bool
+    token: str
+    token_label: str
+    pool: str
+    pool_label: str
     tsar_amount: float
     tsar_price_usd: float
     usd_amount: float
     rub_amount: float
-    rate_used: float
+    usd_rub: float
     source: str
-
-
-class PayoutCreateRequest(BaseModel):
-    user_id: int = Field(..., gt=0)
-    tsar_amount: float = Field(..., gt=0)
-    recipient: str = Field(..., min_length=16, max_length=20)
-
-
-class PayoutCreateResponse(BaseModel):
-    ok: bool
-    payout_id: str
-    amount_rub: float
-    p2p_partner: Optional[str] = None
-    p2p_price: Optional[float] = None
-    error: Optional[str] = None
-
-
-class TonNotifyRequest(BaseModel):
-    event: dict
-    source: str = "tonapi.io"
-
-
-class TonNotifyResponse(BaseModel):
-    ok: bool
-    token: Optional[str] = None
-    jetton_master: Optional[str] = None
-    amount: Optional[float] = None
     error: Optional[str] = None
 
 
 @app.get("/health")
-async def health() -> dict:
-    return {
-        "status": "ok",
-        "tsar_master": TSAR_MASTER,
-        "pool": TSAR_PRIMARY_POOL,
-        "treasury": USDT_TREASURY_ADDRESS,
-    }
+async def health():
+    return {"ok": True, "service": "tsar-rub-exchanger", "version": "1.0.0"}
 
 
 @app.get("/v1/pools")
-async def pools() -> dict:
-    """Реальные P2P-объявления (DeDust / walletbot)."""
-    try:
-        ads = await p2p_client.get_buy_ads(crypto="USDT", fiat="RUB", side="BUY", page_size=10)
-        return {
-            "ok": True,
-            "count": len(ads),
-            "ads": [
-                {
-                    "id": a.id,
-                    "nickname": a.nickname,
-                    "price": a.price,
-                    "available_usdt": a.available_usdt,
-                    "min_amount_rub": a.min_amount_rub,
-                    "max_amount_rub": a.max_amount_rub,
-                    "payments": a.payments,
-                    "merchant_level": a.merchant_level,
-                    "is_online": a.is_online,
-                }
-                for a in ads
-            ],
-        }
-    except P2PError as e:
-        return {"ok": False, "error": str(e)}
+async def list_pools():
+    """Список всех 3 DeDust-пулов ЦАРЬ с ценами."""
+    out = []
+    for t in list_tokens():
+        try:
+            q = await feeds[t.slug].quote(1)
+            out.append({
+                "token": t.slug,
+                "name": t.name,
+                "symbol": t.symbol,
+                "emoji": t.emoji,
+                "master": t.master,
+                "pool": t.pool,
+                "pool_label": t.pool_label,
+                "tsar_price_usd": q.tsar_price_usd if q.ok else 0,
+                "tsar_price_rub": q.rate if q.ok else 0,
+                "ok": q.ok,
+                "source": q.source,
+                "error": q.error if not q.ok else None,
+            })
+        except Exception as e:
+            out.append({"token": t.slug, "ok": False, "error": str(e)})
+    return {"pools": out, "usd_rub_fallback": USD_RUB_FALLBACK}
 
 
 @app.post("/v1/quote", response_model=QuoteResponse)
 async def quote(req: QuoteRequest):
-    q = await feed.quote(req.tsar_amount)
-    if not q.ok:
-        raise HTTPException(503, f"price feed error: {q.error}")
+    token = get_token(req.token)
+    if not token:
+        raise HTTPException(404, f"unknown token: {req.token}")
+    q = await feeds[token.slug].quote(req.tsar_amount)
     return QuoteResponse(
+        ok=q.ok,
+        token=token.slug,
+        token_label=f"{token.emoji} {token.name}",
+        pool=token.pool,
+        pool_label=token.pool_label,
         tsar_amount=req.tsar_amount,
         tsar_price_usd=q.tsar_price_usd,
         usd_amount=q.usd_amount,
         rub_amount=q.rub_amount,
-        rate_used=q.rate_used,
+        usd_rub=q.rate_used,
         source=q.source,
+        error=q.error,
     )
 
 
-@app.post("/v1/payouts", response_model=PayoutCreateResponse)
-async def create_payout(req: PayoutCreateRequest):
-    result = await payout_service.payout(
+class PayoutRequest(BaseModel):
+    user_id: int
+    token: str = "BAAL_RA"
+    tsar_amount: float = Field(..., gt=0)
+    recipient: str
+    method: PayoutMethod = PayoutMethod.CARD_RU
+
+
+class PayoutResponse(BaseModel):
+    ok: bool
+    payout_id: Optional[str] = None
+    amount_rub: float = 0
+    p2p_partner: Optional[str] = None
+    p2p_price: float = 0
+    error: Optional[str] = None
+
+
+@app.post("/v1/payouts", response_model=PayoutResponse)
+async def create_payout(req: PayoutRequest):
+    token = get_token(req.token)
+    if not token:
+        raise HTTPException(404, f"unknown token: {req.token}")
+    if req.tsar_amount < token.min_tsar:
+        raise HTTPException(
+            400,
+            f"min amount for {token.slug}: {token.min_tsar}",
+        )
+    result = await _service(token.slug).payout(
         user_id=req.user_id,
         tsar_amount=req.tsar_amount,
         recipient=req.recipient,
-        method=PayoutMethod.CARD_RU,
+        method=req.method,
     )
     if not result.ok:
-        return PayoutCreateResponse(
-            ok=False,
-            payout_id=result.payout.id,
-            amount_rub=result.payout.amount_rub,
-            error=result.error,
-        )
-    return PayoutCreateResponse(
+        return PayoutResponse(ok=False, error=result.error)
+    ad = result.p2p_ad
+    return PayoutResponse(
         ok=True,
         payout_id=result.payout.id,
         amount_rub=result.payout.amount_rub,
-        p2p_partner=(result.p2p_ad.nickname if result.p2p_ad else None),
-        p2p_price=(result.p2p_ad.price if result.p2p_ad else None),
+        p2p_partner=ad.nickname if ad else None,
+        p2p_price=ad.price if ad else 0,
     )
 
 
-@app.post("/ton/notify", response_model=TonNotifyResponse)
-async def ton_notify(req: TonNotifyRequest):
-    """Webhook для TonAPI (или ручного вызова): определить токен ЦАРЬ.
+class TonNotifyEvent(BaseModel):
+    tx_hash: str
+    sender: str
+    jetton_master: str
+    amount: float
 
-    Если на казначейство пришёл jetton, у которого master известен
-    (любой из 3 серий ЦАРЬ) — возвращаем, какой это токен.
-    Используется для автодетекта по IP-переводу.
-    """
-    try:
-        event = req.event
-        master = ""
-        amount = 0.0
-        decimals = 9
-        for act in event.get("actions", []):
-            if act.get("type") != "JettonTransfer":
-                continue
-            jt = act.get("JettonTransfer", {})
-            master = (jt.get("jetton") or {}).get("address", "")
-            raw = int(jt.get("amount", "0"))
-            decimals = int((jt.get("jetton") or {}).get("decimals", "9") or 9)
-            amount = raw / (10 ** decimals)
-            break
-        token = find_by_master(master)
-        if not token:
-            return TonNotifyResponse(ok=False, jetton_master=master, amount=amount,
-                                     error=f"unknown jetton master {short_master(master)}")
-        return TonNotifyResponse(
-            ok=True,
-            token=token.name,
-            jetton_master=master,
-            amount=amount,
-        )
-    except Exception as e:
-        return TonNotifyResponse(ok=False, error=str(e))
+
+@app.post("/ton/notify")
+async def ton_notify(event: TonNotifyEvent):
+    """Webhook от TonAPI: уведомление о входящем jetton-переводе."""
+    token = find_by_master(event.jetton_master)
+    if not token:
+        raise HTTPException(404, f"unknown jetton master: {event.jetton_master}")
+    return {
+        "ok": True,
+        "token": token.slug,
+        "name": token.name,
+        "emoji": token.emoji,
+        "master_short": short_master(event.jetton_master),
+        "amount": event.amount,
+        "sender_short": short_master(event.sender),
+    }
+
+
+@app.on_event("shutdown")
+async def _shutdown():
+    for f in feeds.values():
+        await f.close()
+    await p2p.close()
