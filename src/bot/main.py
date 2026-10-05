@@ -2,7 +2,7 @@
 
 3 серии ЦАРЬ, у каждого свой DeDust-пул и кнопка курса.
 
-Версия: 2026-10-05-001 — PriceFeed с quote() для всех 3 царей.
+Версия: 2026-10-05-002 — кнопка «🔄 Обновить P2P».
 """
 from __future__ import annotations
 import asyncio
@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -46,7 +47,7 @@ from api.payouts.service import PayoutService
 from api.payouts.ton_watcher import TonWatcher, IncomingTransfer
 from api.payouts.models import PayoutMethod
 
-BOT_VERSION = "2026-10-05-001"
+BOT_VERSION = "2026-10-05-002"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("tsar.bot")
@@ -69,7 +70,6 @@ ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0") or "0")
 
 logger.info("BOT VERSION %s — feeds: %s, p2p configured: %s",
             BOT_VERSION, list(feeds.keys()), p2p_client.is_configured)
-# Sanity check
 assert hasattr(PriceFeed, 'quote'), "PriceFeed missing quote()"
 for slug, f in feeds.items():
     assert hasattr(f, 'quote'), f"PriceFeed for {slug} missing quote()"
@@ -107,6 +107,7 @@ def main_menu() -> InlineKeyboardMarkup:
         buttons.append([pool_button(t)])
     buttons.append([InlineKeyboardButton(text="💱 Общий курс USD/RUB", callback_data="usd_rub")])
     buttons.append([InlineKeyboardButton(text="📊 P2P-объявления", callback_data="pools")])
+    buttons.append([InlineKeyboardButton(text="🔄 Обновить P2P", callback_data="p2p_refresh")])
     buttons.append([InlineKeyboardButton(text="🆘 Поддержка", callback_data="support")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -135,6 +136,8 @@ async def cmd_help(message: Message):
         "/pool GEMINI — TON-пул Гемини\n"
         "/pool CROWN — TON-пул С коронкой\n"
         "/tokens — все 3 серии\n"
+        "/p2p — текущие P2P-объявления\n"
+        "/p2p_refresh — сбросить кэш P2P\n"
         "/withdraw — вывод средств\n"
         "/help — эта справка\n"
         "/version — версия бота\n\n"
@@ -149,7 +152,8 @@ async def cmd_version(message: Message):
         f"🤖 <b>Версия бота:</b> <code>{BOT_VERSION}</code>\n"
         f"<b>Quote-метод:</b> {'✅ есть' if hasattr(PriceFeed, 'quote') else '❌ отсутствует'}\n"
         f"<b>Фиды:</b> {len(feeds)} ({', '.join(feeds.keys())})\n"
-        f"<b>P2P:</b> {'✅ ключ задан' if p2p_client.is_configured else '⚠️ mock (без P2P_API_KEY)'}"
+        f"<b>P2P:</b> {'✅ ключ задан' if p2p_client.is_configured else '⚠️ mock (без P2P_API_KEY)'}\n"
+        f"<b>P2P кэш:</b> {p2p_client.cache_size} ads, age {p2p_client.cache_age_sec:.1f}s, refreshes #{p2p_client.refresh_count}"
     )
 
 
@@ -347,27 +351,90 @@ async def on_card(message: Message, state: FSMContext):
     await state.clear()
 
 
+@router.message(Command("p2p"))
+async def cmd_p2p(message: Message):
+    await show_p2p_ads(message, edit=False)
+
+
+@router.message(Command("p2p_refresh"))
+async def cmd_p2p_refresh(message: Message):
+    await do_p2p_refresh(message, edit=False)
+
+
+@router.callback_query(F.data == "p2p_refresh")
+async def on_p2p_refresh(callback: CallbackQuery):
+    await do_p2p_refresh(callback.message, edit=True)
+    await callback.answer("🔄 Кэш P2P сброшен")
+
+
+async def do_p2p_refresh(message: Message, *, edit: bool) -> None:
+    try:
+        await p2p_client.invalidate_cache()
+        ads = await p2p_client.refresh()
+        text = await _format_p2p_ads(ads, prefix="🔄 <b>P2P обновлён</b>\n\n")
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Обновить ещё раз", callback_data="p2p_refresh")],
+            [InlineKeyboardButton(text="◀ Назад", callback_data="back")],
+        ])
+        if edit:
+            await message.edit_text(text, reply_markup=kb)
+        else:
+            await message.answer(text, reply_markup=kb)
+    except Exception as e:
+        err = f"❌ Ошибка обновления P2P: {e}"
+        if edit:
+            await message.edit_text(err)
+        else:
+            await message.answer(err)
+
+
+async def show_p2p_ads(message: Message, *, edit: bool) -> None:
+    try:
+        ads = await p2p_client.get_buy_ads()
+        text = await _format_p2p_ads(ads)
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Обновить P2P", callback_data="p2p_refresh")],
+            [InlineKeyboardButton(text="◀ Назад", callback_data="back")],
+        ])
+        if edit:
+            await message.edit_text(text, reply_markup=kb)
+        else:
+            await message.answer(text, reply_markup=kb)
+    except Exception as e:
+        err = f"❌ P2P ошибка: {e}"
+        if edit:
+            await message.edit_text(err)
+        else:
+            await message.answer(err)
+
+
+async def _format_p2p_ads(ads, *, prefix: str = "") -> str:
+    if not ads:
+        body = "Нет активных объявлений."
+    else:
+        lines = [
+            f"{prefix}📊 <b>P2P-объявления (покупка USDT)</b>\n"
+            f"<i>P2P-API: {'✅ реальный' if p2p_client.is_configured else '⚠️ mock (без P2P_API_KEY)'}</i>"
+            f"  |  источник: <code>{p2p_client.last_source or '—'}</code>"
+            f"  |  refreshes: <b>#{p2p_client.refresh_count}</b>\n"
+        ]
+        for i, a in enumerate(ads[:10], 1):
+            lines.append(
+                f"{i}. <b>{a.nickname}</b> [{a.merchant_level}]\n"
+                f"    {a.price:.2f} ₽/USDT  •  {a.available_usdt:,.0f} USDT\n"
+                f"    {', '.join(a.payments[:3])}"
+            )
+        best = min(ads, key=lambda x: x.price)
+        lines.append(
+            f"\n🏆 <b>Лучший курс:</b> {best.nickname} — {best.price:.2f} ₽/USDT"
+        )
+        body = "\n".join(lines)
+    return body
+
+
 @router.callback_query(F.data == "pools")
 async def on_pools(callback: CallbackQuery):
-    try:
-        ads = await p2p_client.get_buy_ads(crypto="USDT", fiat="RUB", side="BUY", page_size=5)
-        if not ads:
-            text = "📊 <b>P2P-объявления (BUY USDT)</b>\n\nНет активных объявлений."
-        else:
-            lines = [f"📊 <b>P2P-объявления (покупка USDT)</b>\n<i>P2P-API: {'✅ реальный' if p2p_client.is_configured else '⚠️ mock (без P2P_API_KEY)'}</i>\n"]
-            for a in ads[:5]:
-                lines.append(
-                    f"• <b>{a.nickname}</b> — {a.price:.2f} ₽/USDT\n"
-                    f"  доступно: {a.available_usdt:,.0f} USDT\n"
-                    f"  способы: {', '.join(a.payments[:3])}\n"
-                )
-            text = "\n".join(lines)
-    except Exception as e:
-        text = f"❌ P2P ошибка: {e}"
-    await callback.message.edit_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="back")]])
-    )
+    await show_p2p_ads(callback.message, edit=True)
     await callback.answer()
 
 
@@ -390,7 +457,7 @@ async def on_back(callback: CallbackQuery):
     await callback.answer()
 
 
-# === TonWatcher: автоопределение токена по входящему IP-переводу ===
+# === TonWatcher ===
 async def on_incoming_transfer(t: IncomingTransfer) -> None:
     emoji = t.token.emoji if t.token else "❓"
     name = t.token.name if t.token else "НЕИЗВЕСТНЫЙ ТОКЕН"
@@ -414,7 +481,14 @@ async def main():
     dp.include_router(router)
     logger.info("🚀 Bot %s starting...", BOT_VERSION)
     logger.info("feeds: %s", {k: f"manual={f.manual_rate}" for k, f in feeds.items()})
-    logger.info("p2p: configured=%s", p2p_client.is_configured)
+    logger.info("p2p: configured=%s, p2p_client class has refresh=%s",
+                p2p_client.is_configured, hasattr(p2p_client, 'refresh'))
+    # Pre-warm P2P cache
+    try:
+        await p2p_client.get_buy_ads()
+        logger.info("P2P cache pre-warmed: %d ads", p2p_client.cache_size)
+    except Exception as e:
+        logger.warning("P2P pre-warm failed: %s", e)
     await bot.delete_webhook(drop_pending_updates=True)
     watcher = TonWatcher(poll_interval_sec=15.0, on_transfer=on_incoming_transfer)
     watcher.start()
