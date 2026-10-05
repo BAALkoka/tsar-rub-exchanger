@@ -1,6 +1,8 @@
 """Telegram-бот обменника ЦАРЬ → RUB.
 
 3 серии ЦАРЬ, у каждого свой DeDust-пул и кнопка курса.
+
+Версия: 2026-10-05-001 — PriceFeed с quote() для всех 3 царей.
 """
 from __future__ import annotations
 import asyncio
@@ -42,7 +44,9 @@ from api.payouts.price_feed import PriceFeed
 from api.payouts.p2p import P2PClient
 from api.payouts.service import PayoutService
 from api.payouts.ton_watcher import TonWatcher, IncomingTransfer
+from api.payouts.models import PayoutMethod
 
+BOT_VERSION = "2026-10-05-001"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("tsar.bot")
@@ -56,12 +60,20 @@ router = Router()
 
 # === Отдельный PriceFeed для каждого царя (свой DeDust-пул) ===
 feeds: dict[str, PriceFeed] = {
-    t.slug: PriceFeed(token_master=t.master, token_pool=t.pool, manual_rate=1.0)
+    t.slug: PriceFeed(token_master=t.master, token_pool=t.pool, pool_label=t.pool_label, manual_rate=1.0)
     for t in list_tokens()
 }
 p2p_client = P2PClient()
 
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0") or "0")
+
+logger.info("BOT VERSION %s — feeds: %s, p2p configured: %s",
+            BOT_VERSION, list(feeds.keys()), p2p_client.is_configured)
+# Sanity check
+assert hasattr(PriceFeed, 'quote'), "PriceFeed missing quote()"
+for slug, f in feeds.items():
+    assert hasattr(f, 'quote'), f"PriceFeed for {slug} missing quote()"
+logger.info("Sanity check passed: all PriceFeed instances have quote() method")
 
 
 def _service_for(slug: str) -> PayoutService:
@@ -102,7 +114,7 @@ def main_menu() -> InlineKeyboardMarkup:
 @router.message(CommandStart())
 async def cmd_start(message: Message):
     await message.answer(
-        "👑 <b>ЦАРЬ Обменник</b>\n\n"
+        f"👑 <b>ЦАРЬ Обменник</b> <i>v{BOT_VERSION}</i>\n\n"
         "Обмен ЦАРЬ → USDT → P2P → RUB → карта.\n\n"
         "<b>3 серии ЦАРЬ — каждая со своим DeDust-пулом:</b>\n"
         "  👑 BAAL_RA — DeDust USD₮-пул\n"
@@ -124,9 +136,20 @@ async def cmd_help(message: Message):
         "/pool CROWN — TON-пул С коронкой\n"
         "/tokens — все 3 серии\n"
         "/withdraw — вывод средств\n"
-        "/help — эта справка\n\n"
+        "/help — эта справка\n"
+        "/version — версия бота\n\n"
         f"<b>Поддержка:</b> {SUPPORT_HANDLE}\n"
         f"<b>Казначейство:</b> <code>{USDT_TREASURY_ADDRESS}</code>"
+    )
+
+
+@router.message(Command("version"))
+async def cmd_version(message: Message):
+    await message.answer(
+        f"🤖 <b>Версия бота:</b> <code>{BOT_VERSION}</code>\n"
+        f"<b>Quote-метод:</b> {'✅ есть' if hasattr(PriceFeed, 'quote') else '❌ отсутствует'}\n"
+        f"<b>Фиды:</b> {len(feeds)} ({', '.join(feeds.keys())})\n"
+        f"<b>P2P:</b> {'✅ ключ задан' if p2p_client.is_configured else '⚠️ mock (без P2P_API_KEY)'}"
     )
 
 
@@ -149,14 +172,14 @@ async def cmd_rate(message: Message):
 
 
 async def cmd_pool_main(message: Message):
-    lines = ["💱 <b>Общий курс ЦАРЬ</b>\n"]
+    lines = [f"💱 <b>Общий курс ЦАРЬ</b> <i>v{BOT_VERSION}</i>\n"]
     for t in list_tokens():
         try:
             q = await feeds[t.slug].quote(1_000_000)
             if q.ok:
                 lines.append(
                     f"{t.emoji} <b>{t.symbol} {t.name}</b> ({t.pool_label})\n"
-                    f"  1 000 000 ЦАРЬ = <b>{q.rub_amount:,.2f} ₽</b>\n"
+                    f"  1 000 000 ЦАРЬ = <b>{q.rub_amount:,.4f} ₽</b>\n"
                     f"  1 ЦАРЬ ≈ {q.tsar_price_usd*100:.4f} ¢\n"
                     f"  источник: {q.source}\n"
                 )
@@ -182,8 +205,8 @@ async def on_pool(callback: CallbackQuery):
                 f"🏦 <b>{token.symbol} {token.name} — DeDust {token.pool_label}-пул</b>\n\n"
                 f"Адрес пула: <code>{token.pool}</code>\n"
                 f"Jetton master: <code>{token.master}</code>\n\n"
-                f"1 000 000 ЦАРЬ = <b>{q.rub_amount:,.2f} ₽</b>\n"
-                f"1 ЦАРЬ ≈ {q.tsar_price_usd*100:.4f} ¢ ({q.tsar_price_usd:.6f} USD)\n"
+                f"1 000 000 ЦАРЬ = <b>{q.rub_amount:,.4f} ₽</b>\n"
+                f"1 ЦАРЬ ≈ {q.tsar_price_usd*100:.4f} ¢ ({q.tsar_price_usd:.10f} USD)\n"
                 f"USD/RUB: {q.rate_used:.2f} ₽\n"
                 f"Источник: <i>{q.source}</i>"
             )
@@ -213,7 +236,7 @@ async def cmd_pool(message: Message):
                 await message.answer(
                     f"🏦 <b>{token.symbol} — DeDust {token.pool_label}-пул</b>\n\n"
                     f"Адрес пула: <code>{token.pool}</code>\n"
-                    f"1 000 000 ЦАРЬ = <b>{q.rub_amount:,.2f} ₽</b>\n"
+                    f"1 000 000 ЦАРЬ = <b>{q.rub_amount:,.4f} ₽</b>\n"
                     f"1 ЦАРЬ ≈ {q.tsar_price_usd*100:.4f} ¢\n"
                     f"USD/RUB: {q.rate_used:.2f} ₽\n"
                     f"Источник: <i>{q.source}</i>"
@@ -360,7 +383,7 @@ async def on_support(callback: CallbackQuery):
 @router.callback_query(F.data == "back")
 async def on_back(callback: CallbackQuery):
     await callback.message.edit_text(
-        "👑 <b>ЦАРЬ Обменник</b>\n\n"
+        f"👑 <b>ЦАРЬ Обменник</b> <i>v{BOT_VERSION}</i>\n\n"
         "Выбери токен:",
         reply_markup=main_menu()
     )
@@ -389,7 +412,9 @@ async def on_incoming_transfer(t: IncomingTransfer) -> None:
 
 async def main():
     dp.include_router(router)
-    logger.info("Bot starting...")
+    logger.info("🚀 Bot %s starting...", BOT_VERSION)
+    logger.info("feeds: %s", {k: f"manual={f.manual_rate}" for k, f in feeds.items()})
+    logger.info("p2p: configured=%s", p2p_client.is_configured)
     await bot.delete_webhook(drop_pending_updates=True)
     watcher = TonWatcher(poll_interval_sec=15.0, on_transfer=on_incoming_transfer)
     watcher.start()
