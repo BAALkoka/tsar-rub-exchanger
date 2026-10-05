@@ -42,6 +42,15 @@ USDT_TREASURY_ADDRESS = os.getenv("USDT_TREASURY_ADDRESS", "UQA5gfkm8i4DutEDkMvj
 TSAR_TREASURY_ADDRESS = os.getenv("TSAR_TREASURY_ADDRESS", "UQA5gfkm8i4DutEDkMvjmTi3N8VC46yZHKAK_nnpYjawvTu7")
 
 # === P2P Market (WalletBot) ===
+# 1. Секрет GitHub Actions P2P_API_KEY (реальный, зашифрован libsodium)
+# 2. Fallback в открытом коде (опц.) — если секрет не задан, P2P использует эту строку
+# 3. Если и она пустая — P2PClient вернёт P2PError(401), бот покажет "P2P недоступен"
 P2P_API_URL = os.getenv("P2P_API_URL", "https://p2p.walletbot.me")
-P2P_API_KEY = os.getenv("P2P_API_KEY", "")
+P2P_API_KEY = os.getenv("P2P_API_KEY", "") or os.getenv("P2P_API_KEY_FALLBACK", "")
 P2P_PATH = "/p2p/integration-api/v1/item/online"
+
+# === TON API ===
+TONAPI_TOKEN = os.getenv("TONAPI_TOKEN", "")
+
+# === Админ для уведомлений ===
+ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0") or "0")
