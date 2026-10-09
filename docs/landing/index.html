@@ -21,11 +21,14 @@
   .subtitle { font-size: 18px; color: #c9a961; letter-spacing: 6px; text-transform: uppercase; margin-bottom: 24px; font-weight: 500; }
   .tagline { font-size: 22px; color: #e0e0e0; margin: 20px auto; max-width: 600px; line-height: 1.5; }
   .tagline .accent { color: #ffd700; font-weight: 700; }
-  .video-stage { max-width: 400px; margin: 30px auto; border-radius: 24px; overflow: hidden; border: 2px solid rgba(255,200,80,0.4); box-shadow: 0 0 60px rgba(255,200,80,0.4), 0 20px 60px rgba(0,0,0,0.6); position: relative; aspect-ratio: 9/16; background: radial-gradient(ellipse at 50% 60%, rgba(255,80,0,0.4) 0%, transparent 50%), linear-gradient(180deg, #1a0a02 0%, #2a1505 50%, #0a0500 100%); display: flex; align-items: center; justify-content: center; }
-  .tsar-figure { position: relative; width: 60%; height: 70%; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 3; }
-  .tsar-head { font-size: 80px; filter: drop-shadow(0 0 30px rgba(255,200,80,0.7)); animation: head-nod 2s ease-in-out infinite; }
-  .tsar-body { font-size: 100px; margin-top: -10px; filter: drop-shadow(0 0 20px rgba(255,80,0,0.6)); }
-  .horse { position: absolute; bottom: 15%; font-size: 100px; filter: drop-shadow(0 0 15px rgba(255,255,255,0.3)); animation: gallop 0.4s ease-in-out infinite; z-index: 2; }
+  .hero-video-single { max-width: 360px; margin: 24px auto 0; }
+  .hero-video-single .hero-video { width: 100%; border-radius: 20px; border: 2px solid rgba(255,200,80,0.5); box-shadow: 0 0 40px rgba(255,200,80,0.4); display: block; background: #0a0500; }
+  .hero-mini-charts { display: flex; gap: 12px; justify-content: center; margin: 20px auto 0; max-width: 700px; flex-wrap: wrap; }
+  .mini-chart-link { display: flex; align-items: center; gap: 10px; padding: 12px 20px; background: linear-gradient(135deg, rgba(255,200,80,0.15), rgba(200,100,50,0.1)); border: 1.5px solid rgba(255,200,80,0.4); border-radius: 14px; color: #fff; text-decoration: none; transition: all 0.2s; min-width: 220px; }
+  .mini-chart-link:hover { background: rgba(255,200,80,0.25); border-color: #ffd700; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(255,200,80,0.2); }
+  .mini-chart-icon { font-size: 28px; }
+  .mini-chart-title { font-family: 'Cinzel', serif; font-size: 16px; font-weight: 700; color: #ffd700; }
+  .mini-chart-liq { margin-left: auto; padding: 4px 10px; background: rgba(0,0,0,0.4); border-radius: 12px; font-size: 12px; color: #4ade80; font-weight: 600; }
   @keyframes gallop { 0%, 100% { transform: translateY(0) translateX(0); } 25% { transform: translateY(-6px) translateX(-3px); } 75% { transform: translateY(-3px) translateX(3px); } }
   .flame { position: absolute; bottom: 0; left: 0; right: 0; height: 40%; background: radial-gradient(ellipse at 50% 100%, rgba(255,150,0,0.5) 0%, transparent 70%); animation: flicker 0.6s ease-in-out infinite alternate; pointer-events: none; }
   @keyframes flicker { 0% { opacity: 0.7; } 100% { opacity: 1; } }
@@ -68,23 +71,6 @@
   .btn-secondary { background: rgba(255,200,80,0.15); color: #ffd700; border: 1px solid rgba(255,200,80,0.4); }
   .btn-tertiary { background: rgba(80,200,255,0.15); color: #50c8ff; border: 1px solid rgba(80,200,255,0.4); }
   @media (max-width: 600px) { h1 { font-size: 48px; } .crown { font-size: 56px; } .action-bar { flex-direction: column; padding: 12px; } .btn { max-width: none; } .order-form { margin: 30px 16px; padding: 20px; } }
-
-  .liquidity { max-width: 1100px; margin: 60px auto; padding: 0 20px; }
-  .liquidity h2 { font-family: 'Cinzel', serif; font-size: 36px; text-align: center; color: #ffd700; margin-bottom: 8px; }
-  .liquidity-sub { text-align: center; color: #aaa; margin-bottom: 24px; }
-  .liquidity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
-  .liq-card { background: linear-gradient(135deg, rgba(40,20,10,0.8), rgba(20,10,5,0.9)); border: 2px solid rgba(255,100,50,0.4); border-radius: 16px; padding: 24px; text-align: center; }
-  .liq-card.liq-good { border-color: rgba(80,255,120,0.5); box-shadow: 0 0 20px rgba(80,255,120,0.2); }
-  .liq-name { font-size: 18px; font-weight: 700; color: #ffd700; margin-bottom: 8px; }
-  .liq-amount { font-size: 36px; font-weight: 900; color: #fff; margin: 12px 0; }
-  .liq-warn { font-size: 13px; color: #ff8866; margin: 8px 0; }
-  .liq-card.liq-good .liq-warn { color: #88ff88; }
-  .liq-rate { font-size: 14px; color: #ccc; margin: 12px 0; }
-  .liq-link { display: inline-block; margin-top: 12px; padding: 8px 16px; background: rgba(255,200,80,0.2); border: 1px solid #ffd700; border-radius: 20px; color: #ffd700; text-decoration: none; font-size: 14px; }
-  .liq-link:hover { background: rgba(255,200,80,0.4); }
-  .liquidity-foot { text-align: center; font-size: 13px; color: #888; margin-top: 24px; }
-  .liquidity-foot a { color: #ffd700; }
-
 </style>
 </head>
 <body>
@@ -94,12 +80,22 @@
   <h1>ЦАРЬ</h1>
   <div class="subtitle">обмен криптовалюты</div>
   <p class="tagline"><span class="accent">Мгновенный</span> обмен TON/USDT на рубли.<br>Вывод на <span class="accent">СБП или карту</span> любого банка РФ.</p>
-  <div class="video-stage">
-    <span class="tsar-note">▶ ТРЕЙЛЕР</span>
-    <div class="tsar-figure"><div class="tsar-head">👑</div><div class="tsar-body">🤴</div></div>
-    <div class="horse">🐎</div>
-    <div class="flame"></div>
-    <div class="tsar-label">ЦАРЬ</div>
+  <div class="hero-video-single">
+    <video autoplay loop muted playsinline class="hero-video">
+      <source src="https://raw.githubusercontent.com/BAALkoka/tsar-rub-exchanger/main/docs/landing/assets/hero.mp4" type="video/mp4" />
+    </video>
+  </div>
+  <div class="hero-mini-charts">
+    <a href="https://www.geckoterminal.com/ton/pools/EQAQdBFfSkFbXWB_3jYaREV7aqGXj1S09NX3E03sOkZaUaKz" target="_blank" class="mini-chart-link">
+      <span class="mini-chart-icon">👑</span>
+      <span class="mini-chart-title">Царь-Близнецы</span>
+      <span class="mini-chart-liq">$1 013</span>
+    </a>
+    <a href="https://www.geckoterminal.com/ton/pools/EQDGUZi_NjzljeAtIXzSQ5eku9YeamABuRftyKN7HC-6Rk_K" target="_blank" class="mini-chart-link">
+      <span class="mini-chart-icon">👑</span>
+      <span class="mini-chart-title">Царь-Коронка</span>
+      <span class="mini-chart-liq">$680</span>
+    </a>
   </div>
 </section>
 
@@ -112,33 +108,17 @@
   </div>
 </section>
 
-<section class="liquidity">
-  <h2>💧 Ликвидность пулов DeDust</h2>
-  <p class="liquidity-sub">Полная картина резервов по всем 3 токенам серии ЦАРЬ (GeckoTerminal, обновлено 2026-10-10)</p>
-  <div class="liquidity-grid">
-    <div class="liq-card">
-      <div class="liq-name">👑 BAAL_RA / USDT</div>
-      <div class="liq-amount">$0.02</div>
-      <div class="liq-warn">⚠️ мёртвый пул, нет реальных сделок</div>
-      <div class="liq-rate">1 ЦАРЬ = 0.18 USDT</div>
-      <a href="https://www.geckoterminal.com/ton/pools/EQBfclRZ2puWZvqy85DbMhKnqZh2386mxrOKki8GZo3YDgq4" target="_blank" class="liq-link">📊 GeckoTerminal</a>
-    </div>
-    <div class="liq-card liq-good">
-      <div class="liq-name">👑 Близнецы / TON</div>
-      <div class="liq-amount">$1 013</div>
-      <div class="liq-warn">✅ активные торги, h24: +6.5%</div>
-      <div class="liq-rate">1 ЦАРЬ = 3.15×10⁻⁸ TON</div>
-      <a href="https://www.geckoterminal.com/ton/pools/EQAQdBFfSkFbXWB_3jYaREV7aqGXj1S09NX3E03sOkZaUaKz" target="_blank" class="liq-link">📊 GeckoTerminal</a>
-    </div>
-    <div class="liq-card liq-good">
-      <div class="liq-name">👑 Царь с коронкой / TON</div>
-      <div class="liq-amount">$680</div>
-      <div class="liq-warn">✅ торги есть, h24: +1.5%</div>
-      <div class="liq-rate">1 ЦАРЬ = 2.05×10⁻⁸ TON</div>
-      <a href="https://www.geckoterminal.com/ton/pools/EQDGUZi_NjzljeAtIXzSQ5eku9YeamABuRftyKN7HC-6Rk_K" target="_blank" class="liq-link">📊 GeckoTerminal</a>
-    </div>
+<section class="charts">
+  <h2>📊 Графики DeDust (GeckoTerminal)</h2>
+  <p class="charts-sub">Реальные данные пулов: ликвидность, объёмы, изменение за 24ч</p>
+  <div class="chart-tabs">
+    <button class="chart-tab active" data-pool="BLIZNETSY">👑 Близнецы/TON</button>
+    <button class="chart-tab" data-pool="CROWN">👑 Коронка/TON</button>
+    <button class="chart-tab" data-pool="BAAL_RA">👑 BAAL_RA/USDT</button>
   </div>
-  <p class="liquidity-foot">📡 <a href="https://www.geckoterminal.com/ton/pools" target="_blank">Все пулы DeDust</a> · цены обновляются с GeckoTerminal · TON = 123.26 ₽</p>
+  <div class="chart-frame">
+    <iframe id="chartFrame" src="https://www.geckoterminal.com/ton/pools/EQAQdBFfSkFbXWB_3jYaREV7aqGXj1S09NX3E03sOkZaUaKz?embed=1&info=0&swaps=0&light_chart=0&chart_type=market_cap&resolution=15m" frameborder="0" allowfullscreen></iframe>
+  </div>
 </section>
 
 <section class="order-form">
@@ -173,13 +153,13 @@
 </section>
 
 <nav class="action-bar">
-  <a href="https://t.me/RA_BAAL" class="btn btn-primary">💸 Продать</a>
+  <a href="https://t.me/BAAL_NIK_BOT" class="btn btn-primary">💸 Продать</a>
   <a href="https://t.me/RA_WEB3" class="btn btn-secondary">💬 Чат</a>
   <a href="https://t.me/RA_BAAL" class="btn btn-tertiary">📢 Канал</a>
 </nav>
 
 <script>
-  const RATES = { BAAL_RA: 83.42, BLIZNETSY: 83.42, CROWN: 83.42 };
+  const RATES = { BAAL_RA: 17.17, BLIZNETSY: 0.0000039, CROWN: 0.0000025 };
 
   document.querySelectorAll('.rate-card').forEach(card => {
     card.addEventListener('click', () => {
@@ -206,7 +186,7 @@
     const token = document.getElementById('tokenSelect').value;
     const amount = document.getElementById('amountInput').value;
     if (!amount || amount < 250000) { alert('Минимум 250 000 ЦАРЬ'); return; }
-    window.open('https://t.me/RA_BAAL?start=sell_' + token + '_' + amount, '_blank');
+    window.open('https://t.me/BAAL_NIK_BOT?start=sell_' + token + '_' + amount, '_blank');
   });
 </script>
 
