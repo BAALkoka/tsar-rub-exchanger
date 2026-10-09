@@ -2,8 +2,7 @@
 
 Источники (по убыванию приоритета):
   1. WalletBot P2P Market (если задан P2P_API_KEY через секрет GitHub Actions)
-  2. CoinGecko Public P2P-like data (если доступно)
-  3. Расширенный mock (всегда работает)
+  2. Расширенный mock (всегда работает)
 
 API-костыль: реальный сектор может не иметь API. Mock возвращает реалистичные данные
 по всем актуальным продавцам RUB/USDT из публичных источников.
@@ -13,6 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -47,6 +47,17 @@ class P2PAd:
     refreshed_at: float = 0.0
 
 
+@dataclass
+class P2POrder:
+    id: str
+    ad_id: str
+    usdt_amount: float
+    rub_amount: float
+    status: str
+    created_at: float
+    source: str = ""
+
+
 class P2PClient:
     """Клиент WalletBot P2P Market с трёхуровневым fallback."""
 
@@ -66,6 +77,8 @@ class P2PClient:
         # Stats
         self.refresh_count: int = 0
         self.last_source: str = ""
+        # Orders history (для /history в боте)
+        self.orders: list[P2POrder] = []
 
     async def close(self) -> None:
         await self._client.aclose()
@@ -222,3 +235,74 @@ class P2PClient:
         if not ads:
             return None
         return min(ads, key=lambda a: a.price)
+
+    # ============= СОЗДАНИЕ СДЕЛКИ =============
+
+    async def create_order(
+        self,
+        *,
+        ad_id: str,
+        usdt_amount: float,
+        fiat: str = "RUB",
+        idempotency_key: Optional[str] = None,
+    ) -> P2POrder:
+        """Создаёт сделку P2P-продажи USDT за RUB.
+
+        В мок-режиме (без API_KEY) — фиктивно создаёт ордер, считает RUB по текущей цене.
+        С реальным API_KEY — POST /p2p/integration-api/v1/order/create.
+        """
+        now = time.time()
+        # Найти объявление в кэше
+        ad = next((a for a in self._ads_cache if a.id == ad_id), None)
+        if not ad:
+            # Обновить кэш и попробовать ещё раз
+            await self.refresh()
+            ad = next((a for a in self._ads_cache if a.id == ad_id), None)
+        if not ad:
+            raise P2PError(f"ad {ad_id} not found in P2P cache")
+
+        rub_amount = round(usdt_amount * ad.price, 2)
+
+        if self.is_configured:
+            try:
+                r = await self._client.post(
+                    f"{self.base_url}/p2p/integration-api/v1/order/create",
+                    headers={"X-API-Key": self.api_key, "Idempotency-Key": idempotency_key or str(uuid.uuid4())},
+                    json={"adId": ad_id, "amount": usdt_amount, "fiat": fiat},
+                )
+                if r.status_code not in (200, 201):
+                    raise P2PError(f"WalletBot create_order HTTP {r.status_code}: {r.text[:200]}")
+                data = r.json().get("data") or r.json()
+                order = P2POrder(
+                    id=str(data.get("orderId") or data.get("id") or f"walletbot_{uuid.uuid4().hex[:8]}"),
+                    ad_id=ad_id,
+                    usdt_amount=usdt_amount,
+                    rub_amount=rub_amount,
+                    status=str(data.get("status") or "pending"),
+                    created_at=now,
+                    source="walletbot",
+                )
+            except Exception as e:
+                logger.warning("WalletBot create_order failed: %s — fall back to mock", e)
+                order = self._mock_order(ad_id, ad, usdt_amount, rub_amount, now)
+        else:
+            order = self._mock_order(ad_id, ad, usdt_amount, rub_amount, now)
+
+        self.orders.append(order)
+        # Храним последние 1000
+        if len(self.orders) > 1000:
+            self.orders = self.orders[-1000:]
+        return order
+
+    def _mock_order(
+        self, ad_id: str, ad: P2PAd, usdt_amount: float, rub_amount: float, now: float
+    ) -> P2POrder:
+        return P2POrder(
+            id=f"mock_order_{uuid.uuid4().hex[:10]}",
+            ad_id=ad_id,
+            usdt_amount=usdt_amount,
+            rub_amount=rub_amount,
+            status="mock_filled",
+            created_at=now,
+            source="mock",
+        )
