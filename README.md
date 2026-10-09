@@ -1,88 +1,89 @@
-# 👑 ЦАРЬ Rub Exchanger
+# 👑 Tsar-RUB Exchanger
 
-Telegram-бот для продажи 3 серий токенов ЦАРЬ (BAAL_RA, Гемини, С-коронкой) за RUB через **P2P** или **СБП**.
+Off-ramp сервис для обмена **ЦАРЬ (BAAL_RA)** на рубли с выводом на карту через СБП.
 
-## 🌟 Возможности
+## 🚀 Что делает
 
-- **3 серии ЦАРЬ**, каждая со своим DeDust-пулом
-- **P2P** — продажа USDT с выводом на карту RUB
-- **СБП** — продажа USDT с выводом по номеру телефона
-- **Курс DeDust-пула** в реальном времени (GeckoTerminal)
-- **P2P-объявления** с кэшем 30 сек (10 mock-продавцов)
-- **TonWatcher** для авто-определения токена по входящему jetton
-- **FastAPI** для HTTP-endpoints (quote, payout)
+1. **Цена ЦАРЬ** берётся из DeDust-пула (USDT/ЦАРЬ) в реальном времени
+2. **P2P Market** (WalletBot) — лучший покупатель USDT за RUB
+3. **СБП** — перевод RUB на карту по номеру телефона
+4. **TON** — jetton-перевод ЦАРЬ с кошелька пользователя на кошелёк обменника
 
-## 🤖 Бот в Telegram
+## 📊 Pipeline
 
-[@BAAL_NIK_BOT](https://t.me/BAAL_NIK_BOT)
-
-Команды:
-- `/start` — главное меню
-- `/rate` — общий курс ЦАРЬ
-- `/pool <slug>` — курс конкретного DeDust-пула (BAAL_RA / GEMINI / CROWN)
-- `/tokens` — все 3 серии + адреса
-- `/p2p` — P2P-объявления RUB/USDT
-- `/p2p_refresh` — сбросить кэш P2P
-- `/version` — версия бота
-
-## 🪙 3 серии ЦАРЬ
-
-| Серия | Slug | DeDust-пул | Master |
-|---|---|---|---|
-| 👑 BAAL_RA | `BAAL_RA` | USD₮-пул | `EQC5D3XIrc777bcr8EOQ2_ZBMPuePUqT-zzWTr9-pJEoe7uf` |
-| ♊ Гемини | `GEMINI` | TON-пул | `EQBcUttXk7IhCF23ZghXNc7HY9v3_SAuhsWgW_YHntHsUYtM` |
-| 👑 С коронкой | `CROWN` | TON-пул | `EQB2T7svf6RzbvYc99jWBfj6n9P3gUsyR4AiiBLgPYIwqKX2` |
-
-🔗 Все адреса доступны в боте через кнопку `📋 Адреса`.
+```
+1.2 ЦАРЬ → PriceFeed (DeDust) → P2P best_buy → SBP payout → 100₽ на карту
+            ↓                       ↓                  ↓
+         rate=85₽              ExpressP2P@89.45    sbp_mock_xxx
+```
 
 ## 🏗 Архитектура
 
 ```
-src/
-├── bot/
-│   └── main.py              # Telegram-бот (aiogram)
-├── api/payouts/
-│   ├── tokens.py            # Реестр 3 серий ЦАРЬ
-│   ├── price_feed.py        # Курс DeDust-пулов (GeckoTerminal)
-│   ├── p2p.py               # P2P-клиент (10 mock + 3-tier fallback)
-│   ├── service.py           # PayoutService
-│   ├── ton_watcher.py       # TonWatcher для входящих переводов
-│   └── config.py            # USDT_TREASURY_ADDRESS, USD_RUB_FALLBACK
-└── tests/
-    ├── test_price_feed.py
-    ├── test_p2p.py
-    └── test_tokens.py
+src/api/payouts/
+├── config.py        # MASTER, пулы, комиссии, лимиты
+├── tokens.py        # 3 царя (BAAL_RA, BLIZNETSY, CROWN)
+├── models.py        # Payout, PayoutMethod, PayoutStatus
+├── price_feed.py    # DeDust + CoinGecko + GeckoTerminal
+├── p2p.py           # P2PClient (WalletBot + mock)
+├── sbp.py           # SbpClient (mock + Tochka/Tinkoff/Alfa)
+├── ton_payout.py    # TonPayout (jetton-transfer)
+└── service.py       # PayoutService (5-stage pipeline)
+
+bot.py               # Telegram-бот (aiogram 3.13)
+tests/test_e2e.py    # 4 e2e теста (pytest)
 ```
 
-## 💱 Курс
+## ⚙️ Запуск
 
-1. Получаем курс USDT→RUB (exchangerate-api.com, fallback = 89.40 ₽)
-2. Получаем цену ЦАРЬ в USDT (GeckoTerminal, DeDust-пул)
-3. Перемножаем: `1 ЦАРЬ = price_usdt × rate_usd_rub`
-4. Для 3 серий — 3 разных DeDust-пула → 3 разных цены
+```bash
+# 1. Установить
+pip install -r requirements.txt
 
-## 🤝 P2P
+# 2. Задать секреты
+export TELEGRAM_BOT_TOKEN=...      # от @BotFather
+export P2P_API_KEY=...             # от @wallet (опц.)
+export WALLET_MNEMONIC="..."       # 24 слова (опц.)
+export SBP_PROVIDER=tochka         # mock | tochka | tinkoff | alfa
+export SBP_MERCHANT_ID=...
+export SBP_API_KEY=...
 
-- **Tier 1:** WalletBot P2P Market (если задан `P2P_API_KEY`)
-- **Tier 2:** Public API (если доступно)
-- **Tier 3:** Mock — 10 продавцов (Diamond/Platinum/Gold) с реалистичной вариативностью ±1%
+# 3. Запустить
+python bot.py
+```
 
-## 🔐 Безопасность
+## 🧪 Тесты
 
-- **Никогда не храним приватные ключи** от P2P в коде
-- P2P API ключи добавляются через GitHub Secrets (вручную)
-- Mock-режим работает без ключей
+```bash
+MIN_PAYOUT_TSAR=1 SERVICE_FEE_PCT=0.25 SBP_FEE_PCT=0.40 \
+  python -m pytest tests/test_e2e.py -v -s
+```
 
-## 📜 История
+## 📊 Комиссии
 
-- **v2026-10-05-003** — 3 царя × (P2P + СБП + Адреса + Курс), упрощённое меню
-- **v2026-10-05-002** — P2P refresh + 10 mock sellers + 3 DeDust-пула
-- **v2026-10-05-001** — первый рабочий бот с моно-ЦАРЬ
+| Тип | % | Константа |
+|---|---|---|
+| Сервис | 0.25% | `SERVICE_FEE_PCT` |
+| СБП/банк | 0.40% | `SBP_FEE_PCT` |
+| P2P-спред | 0.20% | `P2P_FEE_PCT` |
+| **Итого** | **~0.85%** | — |
 
-## 📜 Лицензия
+## 🪙 Поддерживаемые токены
 
-MIT
+- 👑 **BAAL_RA** — Царь (основной)
+- 👑👑 **BLIZNETSY** — Близнецы
+- 👑💎 **CROWN** — С коронкой
 
-## 📞 Контакты
+## 📜 Команды бота
 
-Telegram: [@BAAL_NIK](https://t.me/BAAL_NIK) · [@BAAL_NIK_2505lis](https://t.me/BAAL_NIK_2505lis) · [https://baal.tb.ru/2505lis](https://baal.tb.ru/2505lis)
+- `/start` — приветствие
+- `/quote` — курс (с inline-выбором токена)
+- `/sell 1.2` — расчёт для 1.2 ЦАРЬ
+- `/withdraw 250000 +79001234567` — вывод на СБП
+- `/history` — история обменов
+- `/help` — справка
+
+## 🔗 Контакты
+
+- GitHub: [BAALkoka/tsar-rub-exchanger](https://github.com/BAALkoka/tsar-rub-exchanger)
+- Telegram: [@BAAL_NIK](https://t.me/BAAL_NIK)
