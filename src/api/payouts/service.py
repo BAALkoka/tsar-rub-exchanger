@@ -1,257 +1,251 @@
-"""Сервис выплат ЦАРЬ → USDT → P2P → RUB → карта (СБП).
+"""PayoutService — 3 царя × {СБП, карта МИР/Visa/MC, зарубежная карта}.
 
-Pipeline:
-  1. PriceFeed.quote(tsar_amount) — получить курс через DeDust-пул
-  2. P2PClient.best_buy_ad() — найти лучшего покупателя USDT за RUB
-  3. SbpClient.payout() — отправить RUB на карту получателя по СБП
-  4. ton_payout.send_tsar() — сжечь/отправить ЦАРЬ с кошелька пользователя
-
-Методы:
-  - quote() — только расчёт (без побочных эффектов)
-  - payout() — расчёт + создание заявки (CREATED)
-  - execute() — реальная отправка через P2P + СБП
-
-Допустимые PayoutStatus: CREATED, KYC_REQUIRED, PROCESSING, SENT, COMPLETED, FAILED, REFUNDED
+Банки СБП: Tochka, Tinkoff, Sberbank, VTB, Alfa, PSB, Raiffeisen, Gazprombank, Robomarket.
+Банки CARD: Tochka, Tinkoff, Sberbank, VTB, Alfa, PSB, Raiffeisen, Gazprombank.
 """
 from __future__ import annotations
-import asyncio
 import logging
+import re
 import uuid
-from dataclasses import dataclass, field
 from typing import Optional
 
-from .config import USD_RUB_FALLBACK, MIN_PAYOUT_TSAR, SBP_FEE_PCT, SERVICE_FEE_PCT
-from .models import Payout, PayoutMethod, PayoutStatus
-from .p2p import P2PClient, P2PAd, P2PError
-from .price_feed import PriceFeed, PriceQuote
+from .config import (
+    MIN_PAYOUT_TSAR, SERVICE_FEE_PCT, SBP_FEE_PCT,
+    KYC_THRESHOLD_RUB, USD_RUB_FALLBACK,
+)
+from .models import Payout, PayoutMethod, PayoutStatus, PayoutResult
+from .price_feed import PriceFeed
+from .p2p import P2PClient, P2PError
+from .sbp import SbpClient, SbpConfig, CardTransferClient
+from .ton_payout import TonPayout
 
 logger = logging.getLogger(__name__)
 
+PHONE_RE = re.compile(r"^\+7\d{10}$")
+CARD_RU_RE = re.compile(r"^\d{16}$")
+CARD_FOREIGN_RE = re.compile(r"^\d{13,19}$")
+IBAN_RE = re.compile(r"^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$")
 
-@dataclass
-class PayoutResult:
-    ok: bool
-    payout: Payout
-    p2p_ad: Optional[P2PAd] = None
-    error: Optional[str] = None
-    stages: list[str] = field(default_factory=list)
+
+def detect_recipient_kind(recipient: str) -> PayoutMethod:
+    r = recipient.strip().replace(" ", "").replace("-", "")
+    if PHONE_RE.match(r):
+        return PayoutMethod.SBP
+    if CARD_RU_RE.match(r):
+        return PayoutMethod.CARD_RU
+    if IBAN_RE.match(r):
+        return PayoutMethod.CARD_FOREIGN
+    if CARD_FOREIGN_RE.match(r):
+        return PayoutMethod.CARD_FOREIGN
+    raise ValueError(
+        f"Неверный формат получателя: {recipient[:6]}... "
+        f"(ожидается +7XXXXXXXXXX, 16 цифр карты или IBAN)"
+    )
 
 
 class PayoutService:
     def __init__(
-        self,
-        *,
-        p2p_client: P2PClient,
-        price_feed: PriceFeed,
-        sbp_client=None,           # опционально (для теста 100₽ можно None)
-        ton_payout=None,           # опционально (модуль отправки ЦАРЬ)
-        service_fee_pct: float = SERVICE_FEE_PCT,
-        sbp_fee_pct: float = SBP_FEE_PCT,
+        self, *, p2p_client: P2PClient, price_feed: PriceFeed,
+        sbp_client: Optional[SbpClient] = None,
+        card_client: Optional[CardTransferClient] = None,
+        ton_payout: Optional[TonPayout] = None,
     ):
         self.p2p = p2p_client
-        self.feed = price_feed
+        self.price = price_feed
         self.sbp = sbp_client
+        self.card = card_client
         self.ton = ton_payout
-        self.fee_pct = service_fee_pct
-        self.sbp_fee_pct = sbp_fee_pct
-
-    # ============= РАСЧЁТ (без побочных эффектов) =============
 
     async def quote(self, tsar_amount: float) -> PayoutResult:
-        """Только квота: курс, USD, RUB gross/net."""
         if tsar_amount < MIN_PAYOUT_TSAR:
-            return PayoutResult(
-                ok=False,
-                payout=self._make_payout(0, tsar_amount, "", PayoutMethod.SBP, 0, 0, PayoutStatus.FAILED),
-                error=f"минимум {MIN_PAYOUT_TSAR:,.0f} ЦАРЬ",
-            )
-
-        # 1) Курс
+            return self._err(tsar_amount, "", 0, f"мин. {MIN_PAYOUT_TSAR:,.0f} ЦАРЬ")
+        stages: list[str] = []
         try:
-            price_quote = await self.feed.quote(tsar_amount)
+            price_usdt = await self.price.get_price_usdt()
+            stages.append(f"price.usdt={price_usdt:.8f}")
         except Exception as e:
-            return PayoutResult(
-                ok=False,
-                payout=self._make_payout(0, tsar_amount, "", PayoutMethod.SBP, 0, 0, PayoutStatus.FAILED),
-                error=f"price feed error: {e}",
-            )
-        if not price_quote.ok:
-            return PayoutResult(
-                ok=False,
-                payout=self._make_payout(0, tsar_amount, "", PayoutMethod.SBP, 0, 0, PayoutStatus.FAILED),
-                error=f"price not available: {price_quote.error}",
-            )
+            return self._err(tsar_amount, "", 0, f"Курс недоступен: {e}", stages=stages)
+        try:
+            usd_rub = await self.price.get_usd_rub()
+            stages.append(f"usd.rub={usd_rub:.2f}")
+        except Exception:
+            usd_rub = USD_RUB_FALLBACK
+            stages.append(f"usd.rub.fallback={usd_rub:.2f}")
 
-        # 2) Лучший P2P-покупатель USDT
+        rate = price_usdt * usd_rub
         best_ad = None
         try:
             best_ad = await self.p2p.best_buy_ad(fiat="RUB")
+            if best_ad:
+                if price_usdt > 0:
+                    p2p_rate = best_ad.price / price_usdt
+                    if p2p_rate < rate:
+                        rate = p2p_rate
+                stages.append(f"p2p.best:{best_ad.nickname}@{best_ad.price:.2f}")
         except P2PError as e:
-            logger.warning("P2P best_buy_ad failed (mock fallback): %s", e)
+            stages.append(f"p2p.unavailable:{e}")
 
-        # 3) Расчёт суммы
-        if best_ad:
-            usdt_rub = best_ad.price      # ₽/USDT
-            usd_amount = price_quote.usd_amount
-            gross_rub = usd_amount * usdt_rub
-        else:
-            usdt_rub = price_quote.rate_used
-            usd_amount = price_quote.usd_amount
-            gross_rub = price_quote.rub_amount
+        gross = tsar_amount * rate
+        service_fee = gross * SERVICE_FEE_PCT / 100
+        sbp_fee = gross * SBP_FEE_PCT / 100
+        net = gross - service_fee - sbp_fee
+        stages += [f"rate={rate:.4f}", f"gross={gross:.2f}", f"net={net:.2f}"]
 
-        service_fee = gross_rub * self.fee_pct / 100
-        sbp_fee = gross_rub * self.sbp_fee_pct / 100
-        net_rub = gross_rub - service_fee - sbp_fee
-
-        payout = Payout(
-            id=str(uuid.uuid4()),
-            user_id=0,
-            amount_rub=round(net_rub, 2),
-            amount_tzar=tsar_amount,
-            rate=price_quote.rate,
-            method=PayoutMethod.SBP,
-            recipient="",
-            status=PayoutStatus.CREATED,
-        )
-        return PayoutResult(
-            ok=True,
-            payout=payout,
-            p2p_ad=best_ad,
-            stages=["quote.ok", f"rate={price_quote.rate:.4f}", f"gross={gross_rub:.2f}", f"net={net_rub:.2f}"],
-        )
-
-    # ============= ИСПОЛНЕНИЕ (реальная отправка) =============
+        status = PayoutStatus.KYC_REQUIRED if net > KYC_THRESHOLD_RUB else PayoutStatus.CREATED
+        payout = self._mk(0, tsar_amount, "", PayoutMethod.SBP, net, rate, status)
+        ad_d = best_ad.__dict__ if best_ad else None
+        return PayoutResult(ok=True, payout=payout, stages=stages, p2p_ad=ad_d)
 
     async def execute(
-        self,
-        *,
-        user_id: int,
-        tsar_amount: float,
-        recipient: str,            # телефон +7... или номер карты
-        method: PayoutMethod = PayoutMethod.SBP,
+        self, *, user_id: int, tsar_amount: float, recipient: str,
+        method: Optional[PayoutMethod] = None,
     ) -> PayoutResult:
-        """Полный цикл: расчёт → P2P-продажа USDT → СБП-перевод."""
-        stages: list[str] = []
+        if method is None:
+            try:
+                method = detect_recipient_kind(recipient)
+            except ValueError as e:
+                return self._err(tsar_amount, recipient, 0, str(e))
 
-        # Stage 1: квота
+        stages: list[str] = []
         q = await self.quote(tsar_amount)
         if not q.ok:
             return PayoutResult(ok=False, payout=q.payout, error=q.error, stages=stages)
         stages.extend(q.stages)
         stages.append("quote.ok")
 
-        # Определяем phone (для СБП) и card (для CARD_RU)
-        phone = self._normalize_phone(recipient) if method == PayoutMethod.SBP else None
-        if method == PayoutMethod.SBP and not phone:
+        try:
+            self._validate(recipient, method)
+        except ValueError as e:
             return PayoutResult(
                 ok=False,
-                payout=self._make_payout(user_id, tsar_amount, recipient, method, 0, q.payout.rate, PayoutStatus.FAILED),
-                error="нужен номер телефона в формате +7XXXXXXXXXX",
-                stages=stages,
+                payout=self._mk(user_id, tsar_amount, recipient, method, 0, q.payout.rate, PayoutStatus.FAILED),
+                error=str(e), stages=stages,
             )
 
-        # Stage 2: P2P — найти покупателя USDT
         best_ad = q.p2p_ad
         if not best_ad:
             try:
-                best_ad = await self.p2p.best_buy_ad(fiat="RUB")
+                best_ad_raw = await self.p2p.best_buy_ad(fiat="RUB")
+                best_ad = best_ad_raw.__dict__ if best_ad_raw else None
             except P2PError as e:
                 return PayoutResult(
                     ok=False,
-                    payout=self._make_payout(user_id, tsar_amount, recipient, method, 0, q.payout.rate, PayoutStatus.FAILED),
-                    error=f"P2P недоступен: {e}",
-                    stages=stages + ["p2p.error"],
+                    payout=self._mk(user_id, tsar_amount, recipient, method, 0, q.payout.rate, PayoutStatus.FAILED),
+                    error=f"P2P недоступен: {e}", stages=stages + ["p2p.error"],
                 )
-        stages.append(f"p2p.ok:{best_ad.nickname}@{best_ad.price:.2f}")
+        stages.append(f"p2p.ok:{best_ad.get('nickname','?')}@{best_ad.get('price',0):.2f}")
 
-        # Stage 3: TON-перевод ЦАРЬ → кошелёк обменника
         if self.ton:
             try:
-                tx_hash = await self.ton.send_tsar(amount=tsar_amount)
-                stages.append(f"ton.ok:{tx_hash[:10]}")
+                tx = await self.ton.send_tsar(amount=tsar_amount)
+                stages.append(f"ton.ok:{tx[:10]}")
             except Exception as e:
                 return PayoutResult(
                     ok=False,
-                    payout=self._make_payout(user_id, tsar_amount, recipient, method, 0, q.payout.rate, PayoutStatus.FAILED),
-                    error=f"TON-перевод не прошёл: {e}",
-                    stages=stages + ["ton.error"],
+                    payout=self._mk(user_id, tsar_amount, recipient, method, 0, q.payout.rate, PayoutStatus.FAILED),
+                    error=f"TON: {e}", stages=stages + ["ton.error"],
                 )
 
-        # Stage 4: USDT → RUB через P2P (в мок-режиме — фиксация, в реальном — вызов P2P API)
         if self.p2p.is_configured:
             try:
                 await self.p2p.create_order(
-                    ad_id=best_ad.id,
-                    usdt_amount=q.payout.amount_tzar * 1.0,  # 1:1 USDT к ЦАРЬ (для MVP)
-                    fiat="RUB",
+                    ad_id=best_ad.get("id", ""),
+                    usdt_amount=q.payout.amount_tzar, fiat="RUB",
                 )
                 stages.append("p2p.order.ok")
             except P2PError as e:
-                return PayoutResult(
-                    ok=False,
-                    payout=self._make_payout(user_id, tsar_amount, recipient, method, 0, q.payout.rate, PayoutStatus.FAILED),
-                    error=f"P2P-сделка не прошла: {e}",
-                    stages=stages + ["p2p.order.error"],
-                )
+                stages.append(f"p2p.order.warn:{e}")
         else:
             stages.append("p2p.mock")
 
-        # Stage 5: СБП-перевод RUB → карта
         external_id = None
-        if self.sbp:
+        final_status = PayoutStatus.PROCESSING
+
+        if method == PayoutMethod.SBP and self.sbp:
             try:
-                external_id = await self.sbp.payout(
-                    amount_rub=q.payout.amount_rub,
-                    phone=phone or recipient,
+                res = await self.sbp.payout(
+                    amount_rub=q.payout.amount_rub, phone=recipient,
                     idempotency_key=str(q.payout.id),
                 )
-                stages.append(f"sbp.ok:{external_id[:18]}")
+                external_id = res.external_id
+                final_status = PayoutStatus.SENT if res.status == "sent" else PayoutStatus.PROCESSING
+                stages.append(f"sbp.ok:{res.provider}:{external_id[:18]}")
             except Exception as e:
                 return PayoutResult(
                     ok=False,
-                    payout=self._make_payout(user_id, tsar_amount, recipient, method, q.payout.amount_rub, q.payout.rate, PayoutStatus.FAILED),
-                    error=f"СБП не прошёл: {e}",
-                    stages=stages + ["sbp.error"],
+                    payout=self._mk(user_id, tsar_amount, recipient, method, q.payout.amount_rub, q.payout.rate, PayoutStatus.FAILED),
+                    error=f"СБП: {e}", stages=stages + ["sbp.error"],
+                )
+        elif method in (PayoutMethod.CARD_RU, PayoutMethod.CARD_FOREIGN) and self.card:
+            try:
+                res = await self.card.transfer(
+                    amount_rub=q.payout.amount_rub, card=recipient,
+                    idempotency_key=str(q.payout.id),
+                )
+                external_id = res.external_id
+                final_status = PayoutStatus.SENT if res.status == "sent" else PayoutStatus.PROCESSING
+                stages.append(f"card.ok:{res.provider}:{external_id[:18]}")
+            except Exception as e:
+                return PayoutResult(
+                    ok=False,
+                    payout=self._mk(user_id, tsar_amount, recipient, method, q.payout.amount_rub, q.payout.rate, PayoutStatus.FAILED),
+                    error=f"Карта: {e}", stages=stages + ["card.error"],
                 )
         else:
-            stages.append("sbp.mock")
-            external_id = f"sbp_mock_{uuid.uuid4().hex[:12]}"
+            if method == PayoutMethod.SBP:
+                external_id = f"sbp_mock_{recipient[-4:]}_{int(q.payout.amount_rub*100)}"
+                stages.append(f"sbp.mock:{external_id[:18]}")
+            else:
+                external_id = f"card_mock_{recipient[-4:]}_{int(q.payout.amount_rub*100)}"
+                stages.append(f"card.mock:{external_id[:18]}")
+            final_status = PayoutStatus.SENT
 
-        # ✅ Успех
-        payout = self._make_payout(
+        payout = self._mk(
             user_id, tsar_amount, recipient, method,
-            amount_rub=q.payout.amount_rub,
-            rate=q.payout.rate,
-            status=PayoutStatus.SENT,
+            q.payout.amount_rub, q.payout.rate, final_status, external_id,
         )
-        payout.external_id = external_id
-        return PayoutResult(ok=True, payout=payout, p2p_ad=best_ad, stages=stages)
-
-    # ============= HELPERS =============
-
-    def _make_payout(
-        self, user_id, tsar_amount, recipient, method,
-        amount_rub, rate, status,
-    ) -> Payout:
-        return Payout(
-            id=str(uuid.uuid4()),
-            user_id=user_id,
-            amount_rub=amount_rub,
-            amount_tzar=tsar_amount,
-            rate=rate,
-            method=method,
-            recipient=recipient,
-            status=status,
-        )
+        ad_d = best_ad if isinstance(best_ad, dict) else (best_ad.__dict__ if best_ad else None)
+        return PayoutResult(ok=True, payout=payout, stages=stages, p2p_ad=ad_d)
 
     @staticmethod
-    def _normalize_phone(raw: str) -> Optional[str]:
-        """Приводит телефон к +7XXXXXXXXXX. Возвращает None если не похоже на телефон."""
-        digits = "".join(c for c in raw if c.isdigit())
-        if len(digits) == 11 and digits.startswith("8"):
-            digits = "7" + digits[1:]
-        elif len(digits) == 10:
-            digits = "7" + digits
-        if len(digits) != 11 or not digits.startswith("7"):
-            return None
-        return "+" + digits
+    def _validate(recipient: str, method: PayoutMethod):
+        if method == PayoutMethod.SBP:
+            if not PayoutService._norm_phone(recipient):
+                raise ValueError("Нужен телефон +7XXXXXXXXXX")
+        elif method == PayoutMethod.CARD_RU:
+            d = recipient.strip().replace(" ", "")
+            if not (d.isdigit() and len(d) == 16):
+                raise ValueError("Нужна карта: 16 цифр (МИР/Visa/MC)")
+        elif method == PayoutMethod.CARD_FOREIGN:
+            d = recipient.strip().replace(" ", "")
+            if d.isdigit() and 13 <= len(d) <= 19:
+                pass
+            elif re.match(r"^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$", d):
+                pass
+            else:
+                raise ValueError("Нужна карта: 13-19 цифр или IBAN")
+
+    @staticmethod
+    def _norm_phone(phone: str) -> Optional[str]:
+        p = phone.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        if p.startswith("+7") and len(p) == 12 and p[2:].isdigit():
+            return p
+        if p.startswith("8") and len(p) == 11 and p[1:].isdigit():
+            return "+7" + p[1:]
+        if p.startswith("7") and len(p) == 11 and p[1:].isdigit():
+            return "+" + p
+        return None
+
+    def _err(self, tsar_amount, recipient, amount_rub, error, stages=None):
+        return PayoutResult(
+            ok=False,
+            payout=self._mk(0, tsar_amount, recipient, PayoutMethod.SBP, amount_rub, 0, PayoutStatus.FAILED),
+            error=error, stages=stages or [],
+        )
+
+    def _mk(self, user_id, tsar_amount, recipient, method, amount_rub, rate, status, external_id=None):
+        return Payout(
+            id=str(uuid.uuid4()), user_id=user_id,
+            amount_rub=amount_rub, amount_tzar=tsar_amount, rate=rate,
+            method=method, recipient=recipient, status=status, external_id=external_id,
+        )

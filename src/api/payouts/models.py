@@ -1,46 +1,46 @@
 """Pydantic-модели для выплат."""
 from __future__ import annotations
-
 from datetime import datetime
 from enum import Enum
 from typing import Optional
-
 from pydantic import BaseModel, Field
 
 
 class PayoutMethod(str, Enum):
-    """Способ выплаты."""
-
-    SBP = "sbp"               # Система быстрых платежей
-    CARD_RU = "card_ru"       # Банковская карта РФ (МИР/Visa/MC)
-    CARD_FOREIGN = "card_foreign"  # Зарубежная карта (через партнёров)
+    SBP = "sbp"
+    CARD_RU = "card_ru"
+    CARD_FOREIGN = "card_foreign"
 
 
 class PayoutStatus(str, Enum):
-    """Жизненный цикл выплаты."""
-
-    PENDING = "pending"               # заявка создана, ожидает исполнения
-    CREATED = "created"               # расчёт выполнен
-    KYC_REQUIRED = "kyc_required"     # нужно пройти KYC (>5000₽)
-    PROCESSING = "processing"         # отправка по СБП/P2P
-    SENT = "sent"                     # деньги ушли получателю
-    COMPLETED = "completed"           # подтверждено банком
-    FAILED = "failed"                 # ошибка
-    REFUNDED = "refunded"             # возврат
+    PENDING = "pending"
+    CREATED = "created"
+    KYC_REQUIRED = "kyc_required"
+    PROCESSING = "processing"
+    SENT = "sent"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    REFUNDED = "refunded"
 
 
 class Payout(BaseModel):
-    """Заявка на выплату."""
-
-    id: str = Field(..., description="Внутренний UUID")
-    user_id: int = Field(..., description="Telegram user id")
-    amount_rub: float = Field(..., gt=0, description="Сумма в RUB")
-    amount_tzar: float = Field(..., gt=0, description="Сумма в ЦАРЬ")
-    rate: float = Field(..., gt=0, description="Курс ЦАРЬ→RUB на момент создания")
-    method: PayoutMethod
-    recipient: str = Field(..., description="Телефон СБП / номер карты / IBAN")
+    id: str = Field(...)
+    user_id: int = Field(0)
+    amount_rub: float = Field(0, ge=0)
+    amount_tzar: float = Field(0, ge=0)
+    rate: float = Field(0, ge=0)
+    method: PayoutMethod = PayoutMethod.SBP
+    recipient: str = Field("")
     status: PayoutStatus = PayoutStatus.PENDING
-    external_id: Optional[str] = None  # id операции у банка/СБП
+    external_id: Optional[str] = None
     error: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PayoutResult(BaseModel):
+    ok: bool
+    payout: Payout
+    error: Optional[str] = None
+    stages: list[str] = Field(default_factory=list)
+    p2p_ad: Optional[dict] = None
