@@ -19,13 +19,14 @@ class PayoutMethod(str, Enum):
 class PayoutStatus(str, Enum):
     """Жизненный цикл выплаты."""
 
-    CREATED = "created"
-    KYC_REQUIRED = "kyc_required"
-    PROCESSING = "processing"
-    SENT = "sent"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    REFUNDED = "refunded"
+    PENDING = "pending"               # заявка создана, ожидает исполнения
+    CREATED = "created"               # расчёт выполнен
+    KYC_REQUIRED = "kyc_required"     # нужно пройти KYC (>5000₽)
+    PROCESSING = "processing"         # отправка по СБП/P2P
+    SENT = "sent"                     # деньги ушли получателю
+    COMPLETED = "completed"           # подтверждено банком
+    FAILED = "failed"                 # ошибка
+    REFUNDED = "refunded"             # возврат
 
 
 class Payout(BaseModel):
@@ -38,7 +39,7 @@ class Payout(BaseModel):
     rate: float = Field(..., gt=0, description="Курс ЦАРЬ→RUB на момент создания")
     method: PayoutMethod
     recipient: str = Field(..., description="Телефон СБП / номер карты / IBAN")
-    status: PayoutStatus = PayoutStatus.CREATED
+    status: PayoutStatus = PayoutStatus.PENDING
     external_id: Optional[str] = None  # id операции у банка/СБП
     error: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
