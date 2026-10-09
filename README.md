@@ -1,20 +1,36 @@
-# 👑 Tsar-RUB Exchanger
+# 👑 ЦАРЬ бот обменник (tsar-rub-exchanger)
 
-Off-ramp сервис для обмена **ЦАРЬ (BAAL_RA)** на рубли с выводом на карту через СБП.
+Telegram-бот для обмена **ЦАРЬ** (BAAL_RA, BLIZNETSY, CROWN) на рубли с выводом через СБП по номеру телефона.
 
-## 🚀 Что делает
+## 🚀 Запуск за 2 минуты
 
-1. **Цена ЦАРЬ** берётся из DeDust-пула (USDT/ЦАРЬ) в реальном времени
-2. **P2P Market** (WalletBot) — лучший покупатель USDT за RUB
-3. **СБП** — перевод RUB на карту по номеру телефона
-4. **TON** — jetton-перевод ЦАРЬ с кошелька пользователя на кошелёк обменника
+```bash
+# 1. Склонировать
+git clone https://github.com/BAALkoka/tsar-rub-exchanger.git
+cd tsar-rub-exchanger
 
-## 📊 Pipeline
+# 2. Установить
+pip install -r requirements.txt
+
+# 3. Секреты (минимум — TELEGRAM_BOT_TOKEN)
+export TELEGRAM_BOT_TOKEN="..."          # от @BotFather
+export ADMIN_CHAT_ID="..."                # твой Telegram id (опц.)
+export P2P_API_KEY=""                     # от @wallet (опц., mock без него)
+export WALLET_MNEMONIC=""                 # 24 слова (опц., mock без него)
+export SBP_PROVIDER=mock                  # mock | tochka | tinkoff | alfa
+
+# 4. Запустить
+python bot.py
+```
+
+Открой бота в Telegram → `/start` → 💸 Продать → 250000 → +79285448941.
+
+## 📊 Pipeline (5 стадий)
 
 ```
-1.2 ЦАРЬ → PriceFeed (DeDust) → P2P best_buy → SBP payout → 100₽ на карту
+1.2 ЦАРЬ → PriceFeed (DeDust) → P2P best_buy → SBP payout → 105.80₽
             ↓                       ↓                  ↓
-         rate=85₽              ExpressP2P@89.45    sbp_mock_xxx
+         rate=85.06₽            GarantTrade@89.62    sbp_mock_xxx
 ```
 
 ## 🏗 Архитектура
@@ -30,36 +46,18 @@ src/api/payouts/
 ├── ton_payout.py    # TonPayout (jetton-transfer)
 └── service.py       # PayoutService (5-stage pipeline)
 
-bot.py               # Telegram-бот (aiogram 3.13)
-tests/test_e2e.py    # 4 e2e теста (pytest)
-```
-
-## ⚙️ Запуск
-
-```bash
-# 1. Установить
-pip install -r requirements.txt
-
-# 2. Задать секреты
-export TELEGRAM_BOT_TOKEN=...      # от @BotFather
-export P2P_API_KEY=...             # от @wallet (опц.)
-export WALLET_MNEMONIC="..."       # 24 слова (опц.)
-export SBP_PROVIDER=tochka         # mock | tochka | tinkoff | alfa
-export SBP_MERCHANT_ID=...
-export SBP_API_KEY=...
-
-# 3. Запустить
-python bot.py
+bot.py               # Telegram-бот (aiogram 3.13, FSM)
+tests/test_e2e.py    # e2e тесты (pytest)
 ```
 
 ## 🧪 Тесты
 
 ```bash
 MIN_PAYOUT_TSAR=1 SERVICE_FEE_PCT=0.25 SBP_FEE_PCT=0.40 \
-  python -m pytest tests/test_e2e.py -v -s
+  python -m pytest tests/ -v
 ```
 
-## 📊 Комиссии
+## 💸 Комиссии
 
 | Тип | % | Константа |
 |---|---|---|
@@ -76,14 +74,47 @@ MIN_PAYOUT_TSAR=1 SERVICE_FEE_PCT=0.25 SBP_FEE_PCT=0.40 \
 
 ## 📜 Команды бота
 
-- `/start` — приветствие
-- `/quote` — курс (с inline-выбором токена)
-- `/sell 1.2` — расчёт для 1.2 ЦАРЬ
-- `/withdraw 250000 +79001234567` — вывод на СБП
-- `/history` — история обменов
+- `/start` — приветствие + меню
+- `/quote` — курс (inline-выбор токена)
+- `/sell N` — расчёт для N ЦАРЬ
+- `/withdraw` — пошаговый вывод (FSM)
+- `/withdraw N +7...` — быстрый вывод
+- `/history` — история
 - `/help` — справка
+
+## 🔄 Render деплой
+
+1. Подключить репо в [Render Dashboard](https://dashboard.render.com)
+2. **New → Web Service → Build Command**: `pip install -r requirements.txt`
+3. **Start Command**: `python bot.py`
+4. **Environment Variables**:
+   ```
+   TELEGRAM_BOT_TOKEN=...
+   ADMIN_CHAT_ID=...
+   MIN_PAYOUT_TSAR=250000
+   SERVICE_FEE_PCT=0.25
+   SBP_FEE_PCT=0.40
+   ```
+5. **Manual Deploy → Clear build cache & deploy**
 
 ## 🔗 Контакты
 
 - GitHub: [BAALkoka/tsar-rub-exchanger](https://github.com/BAALkoka/tsar-rub-exchanger)
 - Telegram: [@BAAL_NIK](https://t.me/BAAL_NIK)
+
+---
+
+## 🛠 История изменений
+
+### v2026-10-09-006 (финальная)
+- ✅ FSM /withdraw в стиле "ЦАРЬ бот обменник" (waiting_amount → waiting_phone)
+- ✅ Кнопка ⏪ Назад в каждом FSM-сообщении
+- ✅ Inline-выбор 3 царей в /quote
+- ✅ Валидация: 250к ≤ N ≤ 1 млрд, только +7XXXXXXXXXX
+- ✅ Быстрый путь /withdraw N +7...
+- ✅ Фикс `PayoutStatus.PENDING` AttributeError
+
+### v2026-10-09-003
+- P2P-сначала pipeline (service.py: quote + execute, 5 stages)
+- config.py: MIN_PAYOUT_TSAR, SBP_FEE_PCT
+- p2p.py: create_order + P2POrder
