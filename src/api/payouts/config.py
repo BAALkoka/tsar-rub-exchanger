@@ -31,13 +31,20 @@ GECKOTERMINAL_NETWORK = "ton"
 USD_RUB_FALLBACK = float(os.getenv("USD_RUB_FALLBACK", "90.0"))
 
 # === Лимиты ===
+MIN_PAYOUT_TSAR = float(os.getenv("MIN_PAYOUT_TSAR", "250000"))  # 250к ЦАРЬ — минимум для вывода
 DEFAULT_USER_DAILY_LIMIT_RUB = 100_000
+
+# === Комиссии ===
+SERVICE_FEE_PCT = float(os.getenv("SERVICE_FEE_PCT", "0.25"))   # сервис ЦАРЬ-RUB
+SBP_FEE_PCT = float(os.getenv("SBP_FEE_PCT", "0.40"))           # комиссия СБП/банка
+P2P_FEE_PCT = float(os.getenv("P2P_FEE_PCT", "0.20"))           # спред P2P-маркета
+KYC_THRESHOLD_RUB = float(os.getenv("KYC_THRESHOLD_RUB", "5000"))  # >5к ₽ — нужен KYC
 
 # === Поддержка ===
 SUPPORT_HANDLE = "@BAAL_NIK"
 SUPPORT_URL = "https://t.me/BAAL_NIK"
 
-# === Кошелёк для приёма USDT перед P2P-выплатой ===
+# === Кошельки обменника ===
 USDT_TREASURY_ADDRESS = os.getenv("USDT_TREASURY_ADDRESS", "UQA5gfkm8i4DutEDkMvjmTi3N8VC46yZHKAK_nnpYjawvTu7")
 TSAR_TREASURY_ADDRESS = os.getenv("TSAR_TREASURY_ADDRESS", "UQA5gfkm8i4DutEDkMvjmTi3N8VC46yZHKAK_nnpYjawvTu7")
 
@@ -51,6 +58,12 @@ P2P_PATH = "/p2p/integration-api/v1/item/online"
 
 # === TON API ===
 TONAPI_TOKEN = os.getenv("TONAPI_TOKEN", "")
+
+# === СБП-провайдер (Tochka, Tinkoff, Alfa, Robomarket) ===
+SBP_PROVIDER = os.getenv("SBP_PROVIDER", "mock")  # mock | tochka | tinkoff | alfa | robomarket
+SBP_MERCHANT_ID = os.getenv("SBP_MERCHANT_ID", "")
+SBP_API_KEY = os.getenv("SBP_API_KEY", "")
+SBP_BASE_URL = os.getenv("SBP_BASE_URL", "https://api.tochka.ru/v1")
 
 # === Админ для уведомлений ===
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0") or "0")
