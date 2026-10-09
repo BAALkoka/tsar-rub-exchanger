@@ -90,6 +90,7 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="💰 Курс"), KeyboardButton(text="📊 Калькулятор")],
             [KeyboardButton(text="💸 Продать"), KeyboardButton(text="📜 История")],
+            [KeyboardButton(text="🎮 Игра", web_app=WebAppInfo(url=GAME_URL))],
             [KeyboardButton(text="🌐 Сайт", web_app=WebAppInfo(url=SITE_URL))],
             [KeyboardButton(text="❓ Помощь")],
         ],
@@ -101,7 +102,7 @@ def tokens_inline_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(
-                text=f"{t.emoji} {t.label}",
+                text=f"{t.emoji} {t.name}",
                 callback_data=f"quote:{t.slug}",
             )]
             for t in list_tokens()
@@ -151,9 +152,10 @@ async def cmd_start(message: types.Message, state: FSMContext):
         reply_markup=main_menu_kb(),
     )
     await message.answer(
-        "🌐 <b>Открыть сайт:</b>",
+        "🌐 <b>Быстрые ссылки:</b>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🚀 Открыть сайт обменника", url=SITE_URL)]
+            [InlineKeyboardButton(text="🚀 Открыть сайт обменника", url=SITE_URL)],
+            [InlineKeyboardButton(text="🎮 Играть в ЦАРЬ-coin-раннер", url=GAME_URL)],
         ]),
     )
 
