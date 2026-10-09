@@ -25,12 +25,12 @@ class TokenMeta:
 
 # === Мастер-адреса ===
 TSAR_MASTER_BAAL_RA = "EQC5D3XIrc777bcr8EOQ2_ZBMPuePUqT-zzWTr9-pJEoe7uf"
-TSAR_MASTER_GEMINI  = "EQBcUttXk7IhCF23ZghXNc7HY9v3_SAuhsWgW_YHntHsUYtM"
+TSAR_MASTER_BLIZNETSY  = "EQBcUttXk7IhCF23ZghXNc7HY9v3_SAuhsWgW_YHntHsUYtM"
 TSAR_MASTER_CROWN   = "EQB2T7svf6RzbvYc99jWBfj6n9P3gUsyR4AiiBLgPYIwqKX2"
 
 # === DeDust-пулы (самые ликвидные по каждому токену) ===
 POOL_BAAL_RA_USDT   = "EQBfclRZ2puWZvqy85DbMhKnqZh2386mxrOKki8GZo3YDgq4"  # USD₮/ЦАРЬ
-POOL_GEMINI_TON     = "EQAQdBFfSkFbXWB_3jYaREV7aqGXj1S09NX3E03sOkZaUaKz"  # GEMINI/TON
+POOL_BLIZNETSY_TON     = "EQAQdBFfSkFbXWB_3jYaREV7aqGXj1S09NX3E03sOkZaUaKz"  # BLIZNETSY/TON
 POOL_CROWN_TON      = "EQDGUZi_NjzljeAtIXzSQ5eku9YeamABuRftyKN7HC-6Rk_K"  # CROWN/TON
 
 
@@ -47,16 +47,16 @@ TOKENS = {
         description="Основной токен ЦАРЬ (BAAL_RA) — DeDust USD₮-пул",
         emoji="👑",
     ),
-    "GEMINI": TokenMeta(
-        slug="GEMINI",
-        name="Царь Гемини",
+    "BLIZNETSY": TokenMeta(
+        slug="BLIZNETSY",
+        name="Царь Близнецы",
         symbol="ЦАРЬ♊",
-        master=TSAR_MASTER_GEMINI,
-        pool=POOL_GEMINI_TON,
+        master=TSAR_MASTER_BLIZNETSY,
+        pool=POOL_BLIZNETSY_TON,
         pool_label="TON",
         decimals=9,
         min_tsar=250_000,
-        description="Царь Гемини — Gemini-серия — DeDust TON-пул",
+        description="Царь Близнецы — Bliznetsy-серия — DeDust TON-пул",
         emoji="♊",
     ),
     "CROWN": TokenMeta(
