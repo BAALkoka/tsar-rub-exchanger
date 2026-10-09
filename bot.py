@@ -11,6 +11,12 @@
 Кнопки:
   Главное меню: [💰 Курс] [📊 Калькулятор] [💸 Вывести] [📜 История] [❓ Помощь]
   Токены:       [👑 Царь] [👑👑 С коронкой] [👑💎 Близнецы]
+
+Запуск:
+  export TELEGRAM_BOT_TOKEN=...    # от @BotFather
+  export P2P_API_KEY=...            # от @wallet (опц., mock без него)
+  export WALLET_MNEMONIC="..."      # 24 слова (опц., mock без него)
+  python bot.py
 """
 import asyncio
 import logging
@@ -23,6 +29,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from aiogram import Bot, Dispatcher, types
+from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.enums import ParseMode
@@ -30,7 +37,7 @@ from aiogram.enums import ParseMode
 from api.payouts.price_feed import PriceFeed
 from api.payouts.p2p import P2PClient
 from api.payouts.service import PayoutService
-from api.payouts.tokens import list_tokens, get_token, find_by_master
+from api.payouts.tokens import list_tokens, get_token
 from api.payouts.models import PayoutMethod
 from api.payouts.config import SUPPORT_HANDLE, MIN_PAYOUT_TSAR
 
@@ -44,10 +51,14 @@ ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0") or "0")
 if not TELEGRAM_BOT_TOKEN:
     sys.exit("❌ TELEGRAM_BOT_TOKEN не задан (задай через GitHub Secrets или export)")
 
-# === Клиенты ===
+# === Клиенты (создаются по требованию) ===
 def make_clients(slug: str = "BAAL_RA"):
-    token = get_token(slug)
-    feed = PriceFeed(token_master=token.master, token_pool=token.pool, pool_label=token.pool_label)
+    try:
+        token = get_token(slug)
+        feed = PriceFeed(token_master=token.master, token_pool=token.pool, pool_label=token.pool_label)
+    except Exception as e:
+        logger.warning("PriceFeed init failed for %s: %s — fallback default", slug, e)
+        feed = PriceFeed()
     p2p = P2PClient()
     service = PayoutService(p2p_client=p2p, price_feed=feed, sbp_client=None, ton_payout=None)
     return feed, p2p, service
@@ -68,14 +79,17 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
 def tokens_inline_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=t.emoji + " " + t.label, callback_data=f"quote:{t.slug}")]
+            [InlineKeyboardButton(text=f"{t.emoji} {t.label}", callback_data=f"quote:{t.slug}")]
             for t in list_tokens()
         ]
     )
 
 
 # === Бот ===
-bot = Bot(token=TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML)
+bot = Bot(
+    token=TELEGRAM_BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+)
 dp = Dispatcher()
 
 
@@ -114,7 +128,6 @@ async def cmd_quote(message: types.Message):
 async def cb_quote_token(callback: types.CallbackQuery):
     slug = callback.data.split(":", 1)[1]
     feed, p2p, service = make_clients(slug)
-    token = get_token(slug)
     try:
         q = await service.quote(1.0)
         if not q.ok:
@@ -124,14 +137,12 @@ async def cb_quote_token(callback: types.CallbackQuery):
         rate = q.payout.rate
         ads = await p2p.get_buy_ads(force_refresh=True)
         best = min(ads, key=lambda a: a.price) if ads else None
-        text = (
-            f"💰 <b>Курс: {token.label}</b>\n\n"
-            f"1 ЦАРЬ = <b>{rate:.4f} ₽</b>\n"
-            f"Источник: {q.stages[1] if len(q.stages) > 1 else '—'}\n"
-        )
+        text = f"💰 <b>Курс: {get_token(slug).label}</b>\n\n"
+        text += f"1 ЦАРЬ = <b>{rate:.4f} ₽</b>\n"
+        text += f"Источник: {q.stages[1] if len(q.stages) > 1 else '—'}\n"
         if best:
             text += f"Лучший P2P: <b>{best.nickname}</b> @ {best.price:.2f} ₽/USDT\n"
-        text += f"\nПолучить 100₽ → {(100 / rate):.4f} ЦАРЬ"
+        text += f"\nПолучить 100₽ → <code>{(100 / rate):.4f}</code> ЦАРЬ"
         await callback.message.answer(text)
     finally:
         await p2p.close()
@@ -157,12 +168,15 @@ async def cmd_sell(message: types.Message):
         if not q.ok:
             await message.answer(f"❌ {q.error}")
             return
+        service_fee = q.payout.amount_rub * 0.25 / 100
+        sbp_fee = q.payout.amount_rub * 0.40 / 100
+        gross = q.payout.amount_rub + service_fee + sbp_fee
         text = (
             f"📊 <b>Расчёт для {amount} ЦАРЬ</b>\n\n"
             f"Курс: {q.payout.rate:.4f} ₽/ЦАРЬ\n"
-            f"Gross: {q.payout.amount_rub * 1.0065:.2f} ₽ (до комиссий)\n"
-            f"Комиссия сервиса 0.25%: -{q.payout.amount_rub * 0.25 / 100:.2f} ₽\n"
-            f"Комиссия СБП 0.40%: -{q.payout.amount_rub * 0.40 / 100:.2f} ₽\n"
+            f"Gross: {gross:.2f} ₽ (до комиссий)\n"
+            f"Комиссия сервиса 0.25%: -{service_fee:.2f} ₽\n"
+            f"Комиссия СБП 0.40%: -{sbp_fee:.2f} ₽\n"
             f"💵 <b>К получению: {q.payout.amount_rub:.2f} ₽</b>\n\n"
             f"Для вывода: /withdraw {amount} +7XXXXXXXXXX"
         )
@@ -191,12 +205,10 @@ async def cmd_withdraw(message: types.Message):
 
     feed, p2p, service = make_clients()
     try:
-        # Сначала квота
         q = await service.quote(amount)
         if not q.ok:
             await message.answer(f"❌ {q.error}")
             return
-        # Подтверждение
         text = (
             f"💸 <b>Подтвердите вывод</b>\n\n"
             f"Сумма: {amount} ЦАРЬ\n"
