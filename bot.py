@@ -1,23 +1,23 @@
-"""Telegram-бот ЦАРЬ → РУБЛЬ (стиль "ЦАРЬ бот обменник").
+"""Telegram-бот "ЦАРЬ бот обменник" — финальная версия.
 
-Двухшаговый flow:
-  1) Жмёшь "💸 Вывести" → бот просит количество ЦАРЬ
-  2) Вводишь число → бот просит телефон +7XXXXXXXXXX
-  3) Вводишь телефон → бот показывает расчёт + кнопки [✅ Подтвердить] [❌ Отмена]
-  4) Подтверждение → execute() → 5 стадий pipeline
+UX (как у "ЦАРЬ бот обменник"):
+  • Inline-кнопка "ЦАРЬ" в поле ввода для быстрого ввода количества
+  • Кнопка "⏪ Назад" в FSM-сообщениях (отмена шага)
+  • Двухшаговый flow: ввод суммы → ввод телефона → подтверждение
+  • Главное меню: [💰 Курс] [📊 Калькулятор] [💸 Продать] [📜 История] [❓ Помощь]
+  • Inline-выбор токена при /quote
+
+Pipeline (наш PayoutService):
+  PriceFeed → P2PClient.best_buy_ad → (опц. ton_payout) → SbpClient.payout
+  Mock-режим: всё работает без боевых ключей.
 
 Команды:
-  /start     — приветствие + главное меню
-  /quote     — курс (с inline-выбором токена)
-  /sell N    — расчёт для N ЦАРЬ
-  /withdraw  — пошаговый вывод (FSM)
-  /history   — история
-  /help      — справка
-
-Кнопки главного меню:
-  💰 Курс | 📊 Калькулятор
-  💸 Вывести | 📜 История
-  ❓ Помощь
+  /start      — приветствие + меню
+  /quote      — курс (с inline-выбором токена)
+  /sell N     — расчёт для N ЦАРЬ (без FSM)
+  /withdraw   — пошаговый вывод (FSM)
+  /history    — история (mock-пусто)
+  /help       — справка
 """
 import asyncio
 import logging
@@ -38,6 +38,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
     KeyboardButton,
+    WebAppInfo,
 )
 from aiogram.enums import ParseMode
 
@@ -58,7 +59,7 @@ if not TELEGRAM_BOT_TOKEN:
     sys.exit("❌ TELEGRAM_BOT_TOKEN не задан (GitHub Secrets или export)")
 
 
-# === FSM (Finite State Machine) для пошагового вывода ===
+# === FSM ===
 class WithdrawFSM(StatesGroup):
     waiting_amount = State()   # ждём количество ЦАРЬ
     waiting_phone = State()    # ждём номер телефона
@@ -68,12 +69,18 @@ class WithdrawFSM(StatesGroup):
 def make_clients(slug: str = "BAAL_RA"):
     try:
         token = get_token(slug)
-        feed = PriceFeed(token_master=token.master, token_pool=token.pool, pool_label=token.pool_label)
+        feed = PriceFeed(
+            token_master=token.master,
+            token_pool=token.pool,
+            pool_label=token.pool_label,
+        )
     except Exception as e:
-        logger.warning("PriceFeed init failed for %s: %s — fallback", slug, e)
+        logger.warning("PriceFeed init failed for %s: %s — fallback default", slug, e)
         feed = PriceFeed()
     p2p = P2PClient()
-    service = PayoutService(p2p_client=p2p, price_feed=feed, sbp_client=None, ton_payout=None)
+    service = PayoutService(
+        p2p_client=p2p, price_feed=feed, sbp_client=None, ton_payout=None,
+    )
     return feed, p2p, service
 
 
@@ -82,7 +89,7 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="💰 Курс"), KeyboardButton(text="📊 Калькулятор")],
-            [KeyboardButton(text="💸 Вывести"), KeyboardButton(text="📜 История")],
+            [KeyboardButton(text="💸 Продать"), KeyboardButton(text="📜 История")],
             [KeyboardButton(text="❓ Помощь")],
         ],
         resize_keyboard=True,
@@ -92,7 +99,10 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
 def tokens_inline_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=f"{t.emoji} {t.label}", callback_data=f"quote:{t.slug}")]
+            [InlineKeyboardButton(
+                text=f"{t.emoji} {t.label}",
+                callback_data=f"quote:{t.slug}",
+            )]
             for t in list_tokens()
         ]
     )
@@ -106,6 +116,15 @@ def confirm_kb(amount: float, phone: str) -> InlineKeyboardMarkup:
                 callback_data=f"do:{amount}:{phone}",
             )],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")],
+        ]
+    )
+
+
+def back_kb(action: str = "main") -> InlineKeyboardMarkup:
+    """Кнопка ⏪ Назад для FSM-сообщений."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⏪ Назад", callback_data=action)],
         ]
     )
 
@@ -138,10 +157,15 @@ async def cmd_help(message: types.Message):
     await message.answer(
         f"👑 <b>Команды</b>\n\n"
         f"/quote — курс (выбор токена)\n"
-        f"/sell N — расчёт для N ЦАРЬ\n"
+        f"/sell N — расчёт для N ЦАРЬ (без FSM)\n"
         f"/withdraw — пошаговый вывод (FSM)\n"
         f"/history — история\n"
         f"/help — эта справка\n\n"
+        f"💸 <b>Как продать ЦАРЬ</b>\n"
+        f"1) Жмёшь «💸 Продать»\n"
+        f"2) Вводишь количество (например <code>250000</code>)\n"
+        f"3) Вводишь телефон <code>+7XXXXXXXXXX</code>\n"
+        f"4) Подтверждаешь\n\n"
         f"Минимум: {MIN_PAYOUT_TSAR:,.0f} ЦАРЬ\n"
         f"Поддержка: {SUPPORT_HANDLE}",
         reply_markup=main_menu_kb(),
@@ -189,14 +213,14 @@ async def cmd_sell(message: types.Message):
     if len(parts) < 2:
         await message.answer(
             "📊 <b>Калькулятор</b>\n\n"
-            f"Введи: /sell 250000 (количество ЦАРЬ)\n"
+            f"Введи: <code>/sell 250000</code> (количество ЦАРЬ)\n"
             f"Мин. сумма: {MIN_PAYOUT_TSAR:,.0f} ЦАРЬ"
         )
         return
     try:
         amount = float(parts[1].replace(",", ".").replace(" ", ""))
     except ValueError:
-        await message.answer("❌ Неверная сумма. Пример: /sell 250000")
+        await message.answer("❌ Неверная сумма. Пример: <code>/sell 250000</code>")
         return
     await _show_quote(message, amount)
 
@@ -205,28 +229,31 @@ async def cmd_sell(message: types.Message):
 @dp.message(Command("withdraw"))
 async def cmd_withdraw(message: types.Message, state: FSMContext):
     parts = (message.text or "").split()
-    # /withdraw 250000 +7... — быстрый путь (как раньше)
+    # Быстрый путь: /withdraw 250000 +7...
     if len(parts) >= 3:
         try:
             amount = float(parts[1].replace(",", ".").replace(" ", ""))
         except ValueError:
-            await message.answer("❌ Неверная сумма. Пример: /withdraw 250000 +79001234567")
+            await message.answer(
+                "❌ Неверная сумма. Пример: <code>/withdraw 250000 +79001234567</code>"
+            )
             return
         await state.update_data(amount=amount, recipient=parts[2])
         await _show_confirm(message, state)
         return
-    # /withdraw — пошаговый flow
+    # Пошаговый flow
     await state.set_state(WithdrawFSM.waiting_amount)
     await message.answer(
-        f"💸 <b>Вывод ЦАРЬ → РУБЛЬ через СБП</b>\n\n"
+        f"🏦 <b>Продать ЦАРЬ через СБП</b>\n\n"
         f"Мин. сумма: {MIN_PAYOUT_TSAR:,.0f} ЦАРЬ.\n"
+        f"Получишь RUB по номеру телефона через СБП.\n"
         f"Введи количество ЦАРЬ для обмена:",
-        reply_markup=types.ReplyKeyboardRemove(),
+        reply_markup=back_kb("main"),
     )
 
 
-# ===== Reply-кнопка "💸 Вывести" =====
-@dp.message(F.text == "💸 Вывести")
+# ===== Reply-кнопка "💸 Продать" =====
+@dp.message(F.text == "💸 Продать")
 async def menu_withdraw(message: types.Message, state: FSMContext):
     await cmd_withdraw(message, state)
 
@@ -239,22 +266,28 @@ async def fsm_amount(message: types.Message, state: FSMContext):
         amount = float(raw)
     except ValueError:
         await message.answer(
-            f"❌ Неверная сумма. Введи число (например <code>250000</code> или <code>1.2</code>):"
+            f"❌ Неверная сумма. Введи число (например <code>250000</code>):",
+            reply_markup=back_kb("main"),
         )
         return
     if amount < MIN_PAYOUT_TSAR:
         await message.answer(
-            f"❌ Мин. сумма: {MIN_PAYOUT_TSAR:,.0f} ЦАРЬ. Введи больше:"
+            f"❌ Мин. сумма: {MIN_PAYOUT_TSAR:,.0f} ЦАРЬ. Введи больше:",
+            reply_markup=back_kb("main"),
         )
         return
     if amount > 1_000_000_000:
-        await message.answer("❌ Слишком много. Максимум 1 000 000 000 ЦАРЬ за раз:")
+        await message.answer(
+            "❌ Слишком много. Максимум 1 000 000 000 ЦАРЬ за раз:",
+            reply_markup=back_kb("main"),
+        )
         return
     await state.update_data(amount=amount)
     await state.set_state(WithdrawFSM.waiting_phone)
     await message.answer(
-        f"✅ Сумма: <b>{amount:,.0f} ЦАРЬ</b>.\n"
-        f"Введи номер телефона для получения RUB через СБП (формат: <code>+7XXXXXXXXXX</code>):"
+        f"📱 Сумма: <b>{amount:,.0f} ЦАРЬ</b>.\n"
+        f"Введи номер телефона для получения RUB через СБП (формат: <code>+7XXXXXXXXXX</code>):",
+        reply_markup=back_kb("back:amount"),
     )
 
 
@@ -265,11 +298,34 @@ async def fsm_phone(message: types.Message, state: FSMContext):
     normalized = PayoutService._normalize_phone(raw)
     if not normalized:
         await message.answer(
-            "❌ Неверный формат. Введи <code>+7XXXXXXXXXX</code> (11 цифр, начинается с +7):"
+            "❌ Неверный формат. Введи <code>+7XXXXXXXXXX</code> (11 цифр, начинается с +7):",
+            reply_markup=back_kb("back:amount"),
         )
         return
     await state.update_data(recipient=normalized)
     await _show_confirm(message, state)
+
+
+# === Кнопка ⏪ Назад ===
+@dp.callback_query(F.data == "main")
+async def cb_back_main(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.answer("Возвращаюсь в главное меню:", reply_markup=main_menu_kb())
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "back:amount")
+async def cb_back_amount(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(WithdrawFSM.waiting_amount)
+    data = await state.get_data()
+    prev_amount = data.get("amount", MIN_PAYOUT_TSAR)
+    await callback.message.answer(
+        f"⏪ Вернулся к вводу суммы.\n"
+        f"Предыдущая: {prev_amount:,.0f} ЦАРЬ.\n"
+        f"Введи новое количество ЦАРЬ для обмена:",
+        reply_markup=back_kb("main"),
+    )
+    await callback.answer()
 
 
 # === Показать расчёт + кнопки подтверждения ===
@@ -281,10 +337,9 @@ async def _show_confirm(source_message: types.Message, state: FSMContext):
     try:
         q = await service.quote(amount)
         if not q.ok:
-            await source_message.answer(f"❌ {q.error}")
+            await source_message.answer(f"❌ {q.error}", reply_markup=main_menu_kb())
             await state.clear()
             return
-        # Разбивка комиссий (как у "ЦАРЬ бот обменник")
         service_fee = q.payout.amount_rub * 0.25 / 100
         sbp_fee = q.payout.amount_rub * 0.40 / 100
         gross = q.payout.amount_rub + service_fee + sbp_fee
@@ -298,8 +353,7 @@ async def _show_confirm(source_message: types.Message, state: FSMContext):
             f"💎 <b>К получению: {q.payout.amount_rub:.2f} ₽</b>\n"
             f"📞 Телефон: {phone}\n"
             f"🏦 Способ: СБП\n\n"
-            f"⚠️ Mock-режим: деньги реально не переводятся.\n"
-            f"Для боевого нужен P2P_API_KEY + СБП-провайдер."
+            f"⚠️ Mock-режим: деньги реально не переводятся."
         )
         await source_message.answer(text, reply_markup=confirm_kb(amount, phone))
     finally:
@@ -325,7 +379,7 @@ async def _show_quote(message: types.Message, amount: float):
             f"📉 Сервис 0.25%: −{service_fee:.2f} ₽\n"
             f"📉 СБП 0.40%: −{sbp_fee:.2f} ₽\n"
             f"💎 <b>К получению: {q.payout.amount_rub:.2f} ₽</b>\n\n"
-            f"Для вывода нажми 💸 Вывести в меню."
+            f"Для вывода нажми «💸 Продать» в меню."
         )
         await message.answer(text)
     finally:
@@ -407,7 +461,7 @@ async def menu_help(message: types.Message):
 
 
 async def main():
-    logger.info("🚀 Tsar-bot (FSM-mode) starting...")
+    logger.info("🚀 ЦАРЬ бот обменник (FSM-mode) starting...")
     await dp.start_polling(bot)
 
 
