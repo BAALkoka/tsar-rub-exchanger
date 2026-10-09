@@ -44,7 +44,7 @@ from api.payouts.p2p import P2PClient
 from api.payouts.service import PayoutService
 from api.payouts.tokens import list_tokens, get_token
 from api.payouts.models import PayoutMethod
-from api.payouts.config import SUPPORT_HANDLE, MIN_PAYOUT_TSAR
+from api.payouts.config import SUPPORT_HANDLE, MIN_PAYOUT_TSAR, SITE_URL, GAME_URL
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -58,8 +58,8 @@ if not TELEGRAM_BOT_TOKEN:
 
 # === FSM ===
 class WithdrawFSM(StatesGroup):
-    waiting_amount = State()  # ждём количество
-    waiting_phone = State()   # ждём телефон СБП
+    waiting_amount = State()
+    waiting_phone = State()
 
 
 # === Клиенты (lazy) ===
@@ -81,16 +81,12 @@ def make_clients(slug: str = "BAAL_RA"):
     return feed, p2p, service
 
 
-# === Главное меню ===
+# === Главное меню (2 по 2, 3 ряда) ===
 def main_menu_kb() -> ReplyKeyboardMarkup:
-    """Главное меню: 2 кнопки в ряд, компактно (3 ряда)."""
     return ReplyKeyboardMarkup(
         keyboard=[
-            # Ряд 1: основные действия
             [KeyboardButton(text="💰 Курс"), KeyboardButton(text="💸 Продать")],
-            # Ряд 2: инфо + история
             [KeyboardButton(text="📊 Калькулятор"), KeyboardButton(text="📜 История")],
-            # Ряд 3: внешние ссылки
             [
                 KeyboardButton(text="🌐 Сайт", web_app=WebAppInfo(url=SITE_URL)),
                 KeyboardButton(text="🎮 Игра", web_app=WebAppInfo(url=GAME_URL)),
@@ -173,3 +169,20 @@ async def cmd_help(message: types.Message):
         f"Поддержка: {SUPPORT_HANDLE}",
         reply_markup=main_menu_kb(),
     )
+
+
+# ===== Dispatcher + main =====
+dp = Dispatcher()
+
+
+async def main():
+    bot = Bot(
+        token=TELEGRAM_BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+    logger.info("Bot starting…")
+    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
