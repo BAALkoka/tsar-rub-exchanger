@@ -8,8 +8,10 @@ Pipeline:
 
 Методы:
   - quote() — только расчёт (без побочных эффектов)
-  - payout() — расчёт + создание заявки (PENDING)
+  - payout() — расчёт + создание заявки (CREATED)
   - execute() — реальная отправка через P2P + СБП
+
+Допустимые PayoutStatus: CREATED, KYC_REQUIRED, PROCESSING, SENT, COMPLETED, FAILED, REFUNDED
 """
 from __future__ import annotations
 import asyncio
@@ -60,11 +62,7 @@ class PayoutService:
         if tsar_amount < MIN_PAYOUT_TSAR:
             return PayoutResult(
                 ok=False,
-                payout=Payout(
-                    id="", user_id=0, amount_rub=0, amount_tzar=tsar_amount,
-                    rate=0, method=PayoutMethod.SBP, recipient="",
-                    status=PayoutStatus.FAILED,
-                ),
+                payout=self._make_payout(0, tsar_amount, "", PayoutMethod.SBP, 0, 0, PayoutStatus.FAILED),
                 error=f"минимум {MIN_PAYOUT_TSAR:,.0f} ЦАРЬ",
             )
 
@@ -72,9 +70,17 @@ class PayoutService:
         try:
             price_quote = await self.feed.quote(tsar_amount)
         except Exception as e:
-            return self._fail(tsar_amount, 0, 0, f"price feed error: {e}")
+            return PayoutResult(
+                ok=False,
+                payout=self._make_payout(0, tsar_amount, "", PayoutMethod.SBP, 0, 0, PayoutStatus.FAILED),
+                error=f"price feed error: {e}",
+            )
         if not price_quote.ok:
-            return self._fail(tsar_amount, 0, 0, f"price not available: {price_quote.error}", rate=0)
+            return PayoutResult(
+                ok=False,
+                payout=self._make_payout(0, tsar_amount, "", PayoutMethod.SBP, 0, 0, PayoutStatus.FAILED),
+                error=f"price not available: {price_quote.error}",
+            )
 
         # 2) Лучший P2P-покупатель USDT
         best_ad = None
@@ -236,13 +242,6 @@ class PayoutService:
             method=method,
             recipient=recipient,
             status=status,
-        )
-
-    def _fail(self, tsar_amount, rate, amount_rub, error, rate_=0):
-        return PayoutResult(
-            ok=False,
-            payout=self._make_payout(0, tsar_amount, "", PayoutMethod.SBP, amount_rub, rate_, PayoutStatus.FAILED),
-            error=error,
         )
 
     @staticmethod
