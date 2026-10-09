@@ -1,27 +1,15 @@
-# 👑 ЦАРЬ_₽А — Landing Page
+# 👑 ЦАРЬ — Landing Page
 
 **Live**: https://tsar-rub-lt87ahb9.agent.mira.tg
 
-## Стек
-- Single-file `index.html` (14 421 байт, v3)
-- Inline CSS (Cinzel + Inter Google Fonts)
-- Vanilla JS (live rate + order form)
-- Без бэкенда, без сторонних API
+## Каналы (v4)
+- 💸 **Продать** → [@RA_BAAL](https://t.me/RA_BAAL)
+- 💬 **Чат** → [@RA_WEB3](https://t.me/RA_WEB3)
+- 📢 **Канал** → [@RA_BAAL](https://t.me/RA_BAAL)
+- 📝 Форма заявки → deep-link в @RA_BAAL?start=sell_TOKEN_AMOUNT
 
-## Фичи (v3)
-- 👑 Hero с **анимированным царём на коне** (CSS-анимация: float, head-nod, gallop, flicker)
-- 💰 **3 курса** в реальном времени (BAAL_RA, BLIZNETSY, CROWN) — fallback 83.42 ₽
-- 📝 **Форма заявки**: токен + сумма → deep-link в Telegram-бота
-- ⚡ 4 преимущества
-- 🏦 9 банков СБП + 8 CARD
-- 📱 **Фикс-панель внизу**: 💸 Продать / 💬 Чат / 📢 Канал
-- 🧹 **v3**: убраны все личные данные (2505lis)
-
-## Деплой
-```bash
-python3 -c "import zipfile; z=zipfile.ZipFile('site.zip','w'); z.write('index.html')"
-# загрузить site.zip → S3 → managePages deploy --slug tsar-rub
-```
-
-## Репозиторий
-GitHub: https://github.com/BAALkoka/tsar-rub-exchanger
+## v4 changes
+- Убраны все упоминания 2505lis, BAAL_NIK
+- Заголовок: «ЦАРЬ ₽А» → «ЦАРЬ»
+- Кнопки: @RA_BAAL (Продать/Канал) + @RA_WEB3 (Чат)
+- Контакты: @RA_WEB3 + @RA_BAAL + baal.tb.ru + support@tsar-rub.ru
