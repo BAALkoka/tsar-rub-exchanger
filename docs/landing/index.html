@@ -131,6 +131,15 @@
 
 <section class="rates">
   <h2>💰 Курс в реальном времени <span class="live-tag">● LIVE</span></h2>
+  <div class="chart-large chart-large-main">
+    <div class="chart-large-header">
+      <h3>👑 ЦАРЬ / TON <span class="badge-main">★ ОСНОВНОЙ</span></h3>
+      <span class="chart-large-liq">💧 $1 078 ✅ +3.26% h24</span>
+      <a href="https://www.geckoterminal.com/ton/pools/EQDRCDwolvF9dWrGSelvK_H2QHxYCK7vqBD_-kw_8v45PTZf" target="_blank" class="chart-large-link">📈 GeckoTerminal</a>
+    </div>
+    <iframe src="https://www.geckoterminal.com/ton/pools/EQDRCDwolvF9dWrGSelvK_H2QHxYCK7vqBD_-kw_8v45PTZf?embed=1&info=1&swaps=1&grayscale=0&light_chart=0&chart_type=price&resolution=15m" frameborder="0" allow="clipboard-write" allowfullscreen loading="lazy"></iframe>
+  </div>
+
   <div class="chart-large">
     <div class="chart-large-header">
       <h3>👑 BAAL_RA / USDT</h3>
@@ -203,7 +212,7 @@
 
 <section class="order-form">
   <h2>📝 Заявка на обмен</h2>
-  <div class="form-group"><label>Токен</label><select id="tokenSelect"><option value="BAAL_RA">👑 BAAL_RA</option><option value="BLIZNETSY">👑 BLIZNETSY</option><option value="CROWN">👑 CROWN</option></select></div>
+  <div class="form-group"><label>Токен</label><select id="tokenSelect"><option value="BAAL_RA_MAIN">👑 ЦАРЬ (основной) · 11.10 ₽</option><option value="BAAL_RA">👑 BAAL_RA · 17.17 ₽</option><option value="BLIZNETSY">👑 BLIZNETSY</option><option value="CROWN">👑 CROWN</option></select></div>
   <div class="form-group"><label>Сумма в ЦАРЬ (min 250 000)</label><input type="number" id="amountInput" placeholder="250000" min="250000" step="1"></div>
   <div class="form-result" id="formResult">Выберите токен и введите сумму</div>
   <button class="form-submit" id="submitBtn">💸 Открыть в боте</button>
@@ -239,7 +248,7 @@
 </nav>
 
 <script>
-  const RATES = { BAAL_RA: 17.17, BLIZNETSY: 0.0000039, CROWN: 0.0000025 };
+  const RATES = { BAAL_RA_MAIN: 11.10, BAAL_RA: 17.17, BLIZNETSY: 0.0000039, CROWN: 0.0000025 };
 
   document.querySelectorAll('.rate-card').forEach(card => {
     card.addEventListener('click', () => {
