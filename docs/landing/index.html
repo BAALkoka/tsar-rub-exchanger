@@ -68,6 +68,24 @@
   .btn-secondary { background: rgba(255,200,80,0.15); color: #ffd700; border: 1px solid rgba(255,200,80,0.4); }
   .btn-tertiary { background: rgba(80,200,255,0.15); color: #50c8ff; border: 1px solid rgba(80,200,255,0.4); }
   @media (max-width: 600px) { h1 { font-size: 48px; } .crown { font-size: 56px; } .action-bar { flex-direction: column; padding: 12px; } .btn { max-width: none; } .order-form { margin: 30px 16px; padding: 20px; } }
+
+  .hero-videos { display: flex; gap: 16px; justify-content: center; margin: 30px auto 0; max-width: 800px; flex-wrap: wrap; }
+  .hero-video { width: 280px; max-width: 90%; border-radius: 16px; border: 2px solid rgba(255,200,80,0.4); box-shadow: 0 0 30px rgba(255,200,80,0.3); background: #0a0500; }
+  .rate-extra { font-size: 12px; color: #999; margin-top: 4px; }
+  .rate-source { text-align: center; font-size: 13px; color: #888; margin-top: 16px; }
+  .rate-source a { color: #ffd700; }
+  .charts { max-width: 1100px; margin: 60px auto; padding: 0 20px; }
+  .charts h2 { font-family: 'Cinzel', serif; font-size: 36px; text-align: center; color: #ffd700; margin-bottom: 8px; }
+  .charts-sub { text-align: center; color: #aaa; margin-bottom: 24px; }
+  .chart-tabs { display: flex; justify-content: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .chart-tab { padding: 10px 20px; background: rgba(255,200,80,0.1); border: 1px solid rgba(255,200,80,0.3); border-radius: 24px; color: #ffd700; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: inherit; }
+  .chart-tab.active, .chart-tab:hover { background: rgba(255,200,80,0.3); border-color: #ffd700; }
+  .chart-frame { width: 100%; max-width: 1100px; margin: 0 auto; border-radius: 16px; overflow: hidden; border: 1px solid rgba(255,200,80,0.3); background: #0a0500; }
+  .chart-frame iframe { width: 100%; height: 600px; display: block; }
+  .chart-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 20px; }
+  .chart-links a { padding: 8px 16px; background: rgba(255,200,80,0.1); border: 1px solid rgba(255,200,80,0.3); border-radius: 20px; color: #ffd700; text-decoration: none; font-size: 14px; }
+  .chart-links a:hover { background: rgba(255,200,80,0.2); }
+
 </style>
 </head>
 <body>
@@ -92,6 +110,33 @@
     <div class="rate-card" data-token="BAAL_RA"><div class="rate-name">BAAL_RA</div><div class="rate-value">1 ЦАРЬ = 83.42 ₽</div><div class="rate-sub">min: 250 000 ЦАРЬ</div></div>
     <div class="rate-card" data-token="BLIZNETSY"><div class="rate-name">BLIZNETSY</div><div class="rate-value">1 ЦАРЬ = 83.42 ₽</div><div class="rate-sub">min: 250 000 ЦАРЬ</div></div>
     <div class="rate-card" data-token="CROWN"><div class="rate-name">CROWN</div><div class="rate-value">1 ЦАРЬ = 83.42 ₽</div><div class="rate-sub">min: 250 000 ЦАРЬ</div></div>
+  </div>
+</section>
+
+<div class="hero-videos">
+    <video autoplay loop muted playsinline class="hero-video">
+      <source src="https://raw.githubusercontent.com/BAALkoka/tsar-rub-exchanger/main/docs/landing/assets/coin.mp4" type="video/mp4" />
+    </video>
+    <video autoplay loop muted playsinline class="hero-video">
+      <source src="https://raw.githubusercontent.com/BAALkoka/tsar-rub-exchanger/main/docs/landing/assets/tsar.mp4" type="video/mp4" />
+    </video>
+  </div>
+
+<section class="charts">
+  <h2>📊 Графики DeDust (GeckoTerminal)</h2>
+  <p class="charts-sub">Реальные данные с пулов: ликвидность, объёмы, изменение за 24ч</p>
+  <div class="chart-tabs">
+    <button class="chart-tab active" data-pool="BAAL_RA">👑 BAAL_RA/USDT</button>
+    <button class="chart-tab" data-pool="BLIZNETSY">👑 BLIZNETSY/TON</button>
+    <button class="chart-tab" data-pool="CROWN">👑 CROWN/TON</button>
+  </div>
+  <div class="chart-frame">
+    <iframe id="chartFrame" src="https://www.geckoterminal.com/ton/pools/EQBfclRZ2puWZvqy85DbMhKnqZh2386mxrOKki8GZo3YDgq4?embed=1&info=0&swaps=0&light_chart=0&chart_type=market_cap&resolution=15m" frameborder="0" allowfullscreen></iframe>
+  </div>
+  <div class="chart-links">
+    <a href="https://www.geckoterminal.com/ton/pools/EQBfclRZ2puWZvqy85DbMhKnqZh2386mxrOKki8GZo3YDgq4" target="_blank">📈 BAAL_RA</a>
+    <a href="https://www.geckoterminal.com/ton/pools/EQAQdBFfSkFbXWB_3jYaREV7aqGXj1S09NX3E03sOkZaUaKz" target="_blank">📈 BLIZNETSY</a>
+    <a href="https://www.geckoterminal.com/ton/pools/EQDGUZi_NjzljeAtIXzSQ5eku9YeamABuRftyKN7HC-6Rk_K" target="_blank">📈 CROWN</a>
   </div>
 </section>
 
@@ -127,13 +172,18 @@
 </section>
 
 <nav class="action-bar">
-  <a href="https://t.me/RA_BAAL" class="btn btn-primary">💸 Продать</a>
+  <a href="https://t.me/BAAL_NIK_BOT" class="btn btn-primary">💸 Продать</a>
   <a href="https://t.me/RA_WEB3" class="btn btn-secondary">💬 Чат</a>
   <a href="https://t.me/RA_BAAL" class="btn btn-tertiary">📢 Канал</a>
 </nav>
 
 <script>
-  const RATES = { BAAL_RA: 83.42, BLIZNETSY: 83.42, CROWN: 83.42 };
+  const RATES = { BAAL_RA: 17.17, BLIZNETSY: 0.0000039, CROWN: 0.0000025 };
+  const POOL_LINKS = {
+    BAAL_RA: 'https://www.geckoterminal.com/ton/pools/EQBfclRZ2puWZvqy85DbMhKnqZh2386mxrOKki8GZo3YDgq4',
+    BLIZNETSY: 'https://www.geckoterminal.com/ton/pools/EQAQdBFfSkFbXWB_3jYaREV7aqGXj1S09NX3E03sOkZaUaKz',
+    CROWN: 'https://www.geckoterminal.com/ton/pools/EQDGUZi_NjzljeAtIXzSQ5eku9YeamABuRftyKN7HC-6Rk_K',
+  };
 
   document.querySelectorAll('.rate-card').forEach(card => {
     card.addEventListener('click', () => {
@@ -160,8 +210,23 @@
     const token = document.getElementById('tokenSelect').value;
     const amount = document.getElementById('amountInput').value;
     if (!amount || amount < 250000) { alert('Минимум 250 000 ЦАРЬ'); return; }
-    window.open('https://t.me/RA_BAAL?start=sell_' + token + '_' + amount, '_blank');
+    window.open('https://t.me/BAAL_NIK_BOT?start=sell_' + token + '_' + amount, '_blank');
   });
+
+  document.querySelectorAll('.chart-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const pool = tab.dataset.pool;
+      const pools = {
+        'BAAL_RA': 'https://www.geckoterminal.com/ton/pools/EQBfclRZ2puWZvqy85DbMhKnqZh2386mxrOKki8GZo3YDgq4?embed=1&info=0&swaps=0&light_chart=0&chart_type=market_cap&resolution=15m',
+        'BLIZNETSY': 'https://www.geckoterminal.com/ton/pools/EQAQdBFfSkFbXWB_3jYaREV7aqGXj1S09NX3E03sOkZaUaKz?embed=1&info=0&swaps=0&light_chart=0&chart_type=market_cap&resolution=15m',
+        'CROWN': 'https://www.geckoterminal.com/ton/pools/EQDGUZi_NjzljeAtIXzSQ5eku9YeamABuRftyKN7HC-6Rk_K?embed=1&info=0&swaps=0&light_chart=0&chart_type=market_cap&resolution=15m',
+      };
+      document.getElementById('chartFrame').src = pools[pool];
+    });
+  });
+
 </script>
 
 </body>
