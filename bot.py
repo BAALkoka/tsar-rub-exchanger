@@ -90,6 +90,7 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="💰 Курс"), KeyboardButton(text="📊 Калькулятор")],
             [KeyboardButton(text="💸 Продать"), KeyboardButton(text="📜 История")],
+            [KeyboardButton(text="🌐 Сайт", web_app=WebAppInfo(url=SITE_URL))],
             [KeyboardButton(text="❓ Помощь")],
         ],
         resize_keyboard=True,
@@ -149,6 +150,12 @@ async def cmd_start(message: types.Message, state: FSMContext):
         f"Поддержка: {SUPPORT_HANDLE}",
         reply_markup=main_menu_kb(),
     )
+    await message.answer(
+        "🌐 <b>Открыть сайт:</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🚀 Открыть сайт обменника", url=SITE_URL)]
+        ]),
+    )
 
 
 # ===== /help =====
@@ -168,6 +175,10 @@ async def cmd_help(message: types.Message):
         f"4) Подтверждаешь\n\n"
         f"Минимум: {MIN_PAYOUT_TSAR:,.0f} ЦАРЬ\n"
         f"Поддержка: {SUPPORT_HANDLE}",
+        reply_markup=main_menu_kb(),
+    )
+    await message.answer(
+        f"🌐 <a href="{SITE_URL}">Открыть сайт обменника</a>",
         reply_markup=main_menu_kb(),
     )
 
