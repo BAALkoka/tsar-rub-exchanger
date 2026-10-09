@@ -1,0 +1,24 @@
+services:
+  - type: worker
+    name: tsar-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ADMIN_CHAT_ID
+        sync: false
+      - key: MIN_PAYOUT_TSAR
+        value: "250000"
+      - key: SERVICE_FEE_PCT
+        value: "0.25"
+      - key: SBP_FEE_PCT
+        value: "0.40"
+      - key: P2P_FEE_PCT
+        value: "0.20"
+      - key: SBP_PROVIDER
+        value: "mock"
+      - key: PYTHONUNBUFFERED
+        value: "1"
