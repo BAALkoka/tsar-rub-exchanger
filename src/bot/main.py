@@ -1,1 +1,303 @@
-IiIiVGVsZWdyYW0t0LHQvtGCINC+0LHQvNC10L3QvdC40LrQsCDQptCQ0KDQrCDihpIgUlVCLgoKMyDRgdC10YDQuNC4INCm0JDQoNCsLCDRgyDQutCw0LbQtNC+0LPQviDRgdCy0L7QuSBEZUR1c3Qt0L/Rg9C7LiDQktGB0LUgMyDQv9GA0L7QtNCw0Y7RgtGB0Y8g0YfQtdGA0LXQtyBQMlAg0Lgg0KHQkdCfLgoK0JLQtdGA0YHQuNGPOiAyMDI2LTEwLTEwLTAxMiDigJQg0LrQvtC70L7RidGR0L3QvdC+0LUg0LzQtdC90Y46INGB0LrQu9GOINGB0LXQvNC40YfQuNC4INGC0LXQvNC4INC/0YDQvtC80LXQvdC4LiDQv9C+0LTRgNCw0L3QuNC4INC/0YDQvtC40YLRjCDQvtC/0YHQu9GD0LsuCiIiIgpmcm9tIF9fZnV0dXJlX18gaW1wb3J0IGFubm90YXRpb25zCmltcG9ydCBhc3luY2lvCmltcG9ydCBqc29uIGFzIF9qc29uCmltcG9ydCBsb2dnaW5nCmltcG9ydCBvcwppbXBvcnQgc3lzCmltcG9ydCB0aW1lCmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKc3lzLnBhdGguaW5zZXJ0KDAsIHN0cihQYXRoKF9fZmlsZV9fKS5wYXJlbnQucGFyZW50KSkKCmZyb20gYWlvZ3JhbSBpbXBvcnQgQm90LCBEaXNwYXRjaGVyLCBSb3V0ZXIsIEYGZnJvbSBhaW9ncmFtLmNsaWVudC5kZWZhdWx0IGltcG9ydCBEZWZhdWx0Qm90UHJvcGVydGllcwpmcm9tIGFpb2dyYW0uZW51bXMgaW1wb3J0IFBhcnNlTW9kZQpmcm9tIGFpb2dyYW0uZmlsdGVycyBpbXBvcnQgQ29tbWFuZCwgQ29tbWFuZFN0YXJ0CmZyb20gYWlvZ3JhbS5mc20uY29udGV4dCBpbXBvcnQgRlNNQ29udGV4dApmcm9tIGFpb2dyYW0uZnNtLnN0YXRlIGltcG9ydCBTdGF0ZSwgU3RhdGVzR3JvdXAKZnJvbSBhaW9ncmFtLmZzbS5zdG9yYWdlLm1lbW9yeSBpbXBvcnQgTWVtb3J5U3RvcmFnZQpmcm9tIGFpb2dyYW0udHlwZXMgaW1wb3J0ICgKICAgIElubGluZUtleWJvYXJkQnV0dG9uLAogICAgSW5saW5lS2V5Ym9hcmRNYXJrdXAsCiAgICBSZXBseUtleWJvYXJkTWFya3VwLAogICAgS2V5Ym9hcmRCdXR0b24sCiAgICBXZWJBcHBJbmZvLAogICAgTWVzc2FnZSwKICAgIENhbGxiYWNrUXVlcnksCikKZnJvbSBhcGkucGF5b3V0cy50b2tlbnMgaW1wb3J0ICgKICAgIFRPS0VOUywKICAgIGdldF90b2tlbiwKICAgIGxpc3RfdG9rZW5zLAogICAgc2hvcnRfbWFzdGVyLAppbXBvcnQKZnJvbSBhcGkucGF5b3V0cy5jb25maWcgaW1wb3J0ICgKICAgIFVTRF9SVUJfRkFMTEJBQ0ssCiAgICBTV VBwb3JUX0hBTkRMRSwKICAgIFVTRFRfVFJFQVNVUllfQUREUkVTUywKKQpmcm9tIGFwaS5wYXlvdXRzLnByaWNlX2ZlZWQgaW1wb3J0IFByaWNlRmVlZApmcm9tIGFwaS5wYXlvdXRzLnAycCBpbXBvcnQgUDJQQ2xpZW50CmZyb20gYXBpLnBheW91dHMuc2VydmljZSBpbXBvcnQgUGF5b3V0U2VydmljZQpmcm9tIGFwaS5wYXlvdXRzLm1vZGVscyBpbXBvcnQgUGF5b3V0TWV0aG9kCgpCT1RfVkVSU0lPTiA9ICIyMDI2LTEwLTEwLTAxMiIKQk9UX1RPS0VOID0gb3MuZ2V0ZW52KCJURUxFR1JBTV9CT1RfVE9LRU4iLCAiIikuc3RyaXAoKQpsb2dnaW5nLmJhc2ljQ29uZmlnKGxldmVsPWxvZ2dpbmcuSU5GTywgZm9ybWF0PSIlKGFzY3RpbWUpcyBbJShsZXZlbG5hbWUpc10gJShuYW1lKXM6ICUobWVzc2FnZSlzIikKbG9nZ2VyID0gbG9nZ2luZy5nZXRMb2dnZXIoInRzYXIuYm90IikKCmlmIG5vdCBCT1RfVE9LRU46CiAgICByYWlzZSBSdW50aW1lRXJyb3IoIlRFTEVHUkFNX0JPVF9UT0tFTiBpcyByZXF1aXJlZCIpCgpTSVRFX1VSTCA9IG9zLmdldGVudigiU0lURV9VUkwiLCAiaHR0cHM6Ly90c2FyLXJ1Yi1sdDg3YWhiOS5hZ2VudC5taXJhLnRnLyIpLnN0cmlwKCkKR0FN RV9VUkwgPSBvcy5nZXRlbnYoIkdBTUVfVVJMIiwgImh0dHBzOi8vdHNhci1nYW1lLWx0ODdhaGI5LmFnZW50Lm1pcmEudGcvIikuc3RyaXAoKQoKYm90ID0gQm90KHRva2VuPUJPVF9UT0tFTiwgZGVmYXVsdD1EZWZhdWx0Qm90UHJvcGVydGllcyhwYXJzZV9tb2RlPVBhcnNlTW9kZS5IVE1MKSkKZHAgPSBEaXNwYXRjaGVyKHN0b3JhZ2U9TWVtb3J5U3RvcmFnZSgpKQpyb3V0ZXIgPSBSb3V0ZXIoKQoKIyA9PT0g0YfQsNGA0Y8g0L7Qu9C+0Lkg0LLQuNCz0YDQsNC50YLQuNGO0LLQutC+0LkgKGl uLW1lbW9yeSk9PT0KSElTVE9SWSA9IHt9CkhJU1RPUllfRklMRSA9IFBhdGgoIi90bXAvdHNhcl9oaXN0b3J5Lmpzb24iKQoKZGVmIGxvYWRfaGlzdG9yeSgpOgogICAgaWYgSElTVE9SWV9GSUxFLmV4aXN0cygpOgogICAgICAgIHRyeToKICAgICAgICAgICAgZGF0YSA9IF9qc29uLmxvYWRzKEhJU1RPUllfRklMRS5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikpCiAgICAgICAgICAgIGZvciBrLCB2IGluIGRhdGEuaXRlbXMoKToKICAgICAgICAgICAgICAgIEhJU1RPUllbaW50KGspXSA9IHYKICAgICAgICBleGNlcHQgRXhjZXB0aW9uIGFzIGU6CiAgICAgICAgICAgIGxvZ2dlci53YXJuaW5nKCJsb2FkX2hpc3Rvcnk6ICVzIiwgZSkKCgpkZWYgc2F2ZV9oaXN0b3J5KCk6CiAgICB0cnk6CiAgICAgICAgSElTVE9SWV9GSUxFLndyaXRlX3RleHQoCiAgICAgICAgICAgIF9qc29uLmR1bXBzKHtzdHIoayk6IHYgZm9yIGssIHYgaW4gSElTVE9SWS5pdGVtcygpfSwgZW5zdXJlX2FzY2lpPUZhbHNlLCBpbmRlbnQ9MiksCiAgICAgICAgICAgIGVuY29kaW5nPSJ1dGYtOCIsCiAgICAgICAgKQogICAgZXhjZXB0IEV4Y2VwdGlvbiBhcyBlOgogICAgICAgIGxvZ2dlci53YXJuaW5nKCJzYXZlX2hpc3Rvcnk6ICVzIiwgZSkKCgpkZWYgYWRkX3RvX2hpc3RvcnkodXNlcl9pZCwgc2x1ZywgYW1vdW50LCBydWIsIG1ldGhvZCwgc3RhdHVzKToKICAgIEhJU1RPUlkuc2V0ZGVmYXVsdCh1c2VyX2lkLCBbXSkuYXBwZW5kKHsKICAgICAgICAidHMiOiB0aW1lLnRpbWUoKSwKICAgICAgICAic2x1ZyI6IHNsdWcsCiAgICAgICAgImFtb3VudCI6IGFtb3VudCwKICAgICAgICAicnViIjogcnViLAogICAgICAgICJtZXRob2QiOiBtZXRob2QsCiAgICAgICAgInN0YXR1cyI6IHN0YXR1cywKICAgIH0pCiAgICBISVNUT1JZW3VzZXJfaWRdID0gSElTVE9SWVt1c2VyX2lkXVstMTBdCiAgICBzYXZlX2hpc3RvcnkoKQoKCiMgPT09INCh0YLQvtGA0Lgg0LfQsNC/0L7Qv9C+0LrRgyD9PT0KZmVlZHMgPSB7CiAgICB0LnNsdWc6IFByaWNlRmVlZCh0b2tlbl9tYXN0ZXI9dC5tYXN0ZXIsIHRva2VuX3Bvb2w9dC5wb29sLCBwb29sX2xhYmVsPXQucG9vbF9sYWJlbCwgbWFudWFsX3JhdGU9MS4wKQogICAgZm9yIHQgaW4gbGlzdF90b2tlbnMoKQp9CnAycF9jbGllbnQgPSBQMlBDbGllbnQoKQpBRE1JTl9DSEFUX0lEID0gaW50KG9zLmdldGVudigiQURNSU5fQ0hBVF9JRCIsICIwIikgb3IgIjAiKQoKbG9nZ2VyLmluZm8oIkJPVCBWRVJTSU9OICVzLCBmZWVyczogJXMsIHAycCBjb25maWd1cmVkOiAlcyIsCiAgICAgICAgICAgIEJPVF9WRVJTSU9OLCBsaXN0KGZlZWRzLmtleXMoKSksIHAycF9jbGllbnQuaXNfY29uZmlndXJlZCkKYXNzZXJ0IGhhc2F0dHIoUHJpY2VGZWVkLCAncXVvdGUnKSwgIlByaWNlRmVlZCBtaXNzaW5nIHF1b3RlKCkiCgoKZGVmIF9zZXJ2aWNlX2ZvcihzbHVnKToKICAgIHJldHVybiBQYXlvdXRTZXJ2aWNlKHAyUF9jbGllbnQ9cDJwX2NsaWVudCwgcHJpY2VfZmVlZD1mZWVkc1tzbHVnXSkKCg==
+"""Telegram-бот обменника ЦАРЬ → RUB.
+
+3 серии ЦАРЬ, у каждого свой DeDust-пул. Все 3 продаются через P2P и СБП.
+
+Версия: 2026-10-10-014 — кнопка История с реальной логикой.
+"""
+from __future__ import annotations
+import asyncio
+import json as _json
+import logging
+import os
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from aiogram import Bot, Dispatcher, Router, F
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import (
+    InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup,
+    KeyboardButton, WebAppInfo, Message, CallbackQuery,
+)
+from api.payouts.tokens import TOKENS, get_token, list_tokens, short_master
+from api.payouts.config import USD_RUB_FALLBACK, SUPPORT_HANDLE, USDT_TREASURY_ADDRESS
+from api.payouts.price_feed import PriceFeed
+from api.payouts.p2p import P2PClient
+from api.payouts.service import PayoutService
+from api.payouts.models import PayoutMethod
+
+BOT_VERSION = "2026-10-10-014"
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("tsar.bot")
+
+if not BOT_TOKEN:
+    raise RuntimeError("TELEGRAM_BOT_TOKEN is required")
+
+SITE_URL = os.getenv("SITE_URL", "https://tsar-rub-lt87ahb9.agent.mira.tg/").strip()
+GAME_URL = os.getenv("GAME_URL", "https://tsar-game-lt87ahb9.agent.mira.tg/").strip()
+
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+dp = Dispatcher(storage=MemoryStorage())
+router = Router()
+
+HISTORY = {}
+HISTORY_FILE = Path("/tmp/tsar_history.json")
+
+
+def load_history():
+    if HISTORY_FILE.exists():
+        try:
+            data = _json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+            for k, v in data.items():
+                HISTORY[int(k)] = v
+        except Exception as e:
+            logger.warning("load_history: %s", e)
+
+
+def save_history():
+    try:
+        HISTORY_FILE.write_text(
+            _json.dumps({str(k): v for k, v in HISTORY.items()}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        logger.warning("save_history: %s", e)
+
+
+def add_to_history(user_id, slug, amount, rub, method, status):
+    HISTORY.setdefault(user_id, []).append({
+        "ts": time.time(), "slug": slug, "amount": amount,
+        "rub": rub, "method": method, "status": status,
+    })
+    HISTORY[user_id] = HISTORY[user_id][-10:]
+    save_history()
+
+
+feeds = {
+    t.slug: PriceFeed(token_master=t.master, token_pool=t.pool, pool_label=t.pool_label, manual_rate=1.0)
+    for t in list_tokens()
+}
+p2p_client = P2PClient()
+ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0") or "0")
+
+logger.info("BOT VERSION %s, feeds: %s, p2p configured: %s",
+            BOT_VERSION, list(feeds.keys()), p2p_client.is_configured)
+assert hasattr(PriceFeed, 'quote'), "PriceFeed missing quote()"
+
+
+def _service_for(slug):
+    return PayoutService(p2p_client=p2p_client, price_feed=feeds[slug])
+
+
+class WithdrawForm(StatesGroup):
+    token_slug = State()
+    amount = State()
+
+
+def reply_main_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="💰 Курс"), KeyboardButton(text="💸 Продать")],
+            [KeyboardButton(text="📊 Калькулятор"), KeyboardButton(text="📜 История")],
+            [KeyboardButton(text="🌐 Сайт"), KeyboardButton(text="🎮 Игра")],
+            [KeyboardButton(text="♻️ /start")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Выбери действие или введи /start",
+    )
+
+
+def site_game_inline():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🌐 Открыть сайт", url=SITE_URL),
+            InlineKeyboardButton(text="🎮 Играть", web_app=WebAppInfo(url=GAME_URL)),
+        ],
+        [
+            InlineKeyboardButton(text="🤖 Бот @BAAL_NIK_BOT", url="https://t.me/BAAL_NIK_BOT"),
+            InlineKeyboardButton(text="💬 Чат", url="https://t.me/BAAL_NIK_chat"),
+        ],
+    ])
+
+
+def main_menu():
+    buttons = []
+    for t in list_tokens():
+        buttons.append([InlineKeyboardButton(text=t.emoji + " " + t.symbol + " — " + t.name, callback_data="token:" + t.slug)])
+    buttons.append([InlineKeyboardButton(text="🌐 Сайт обменника", url=SITE_URL)])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+NL = "\n"
+
+
+@router.message(CommandStart())
+@router.message(F.text == "♻️ /start")
+async def cmd_start(message: Message):
+    text = (
+        "👑 <b>ЦАРЬ Обменник</b> <i>v" + BOT_VERSION + "</i>" + NL + NL
+        + "Продай любой из 3 царей за RUB." + NL
+        + "Способы получения: <b>P2P</b> (карта) или <b>СБП</b> (по телефону)." + NL + NL
+        + "🌐 <b>Сайт:</b> " + SITE_URL + NL
+        + "🎮 <b>Игра:</b> " + GAME_URL + NL + NL
+        + "👇 Жми кнопки внизу экрана ↓"
+    )
+    await message.answer(text, reply_markup=site_game_inline())
+    await message.answer(
+        "👇 <b>Главное меню — кнопки внизу:</b>",
+        reply_markup=reply_main_keyboard(),
+    )
+
+
+@router.message(F.text == "💰 Курс")
+async def on_rate_btn(message: Message):
+    lines = ["💱 <b>Курс DeDust-пулов</b> <i>v" + BOT_VERSION + "</i>" + NL]
+    for t in list_tokens():
+        try:
+            q = await feeds[t.slug].quote(1_000_000)
+            if q.ok:
+                lines.append(t.emoji + " <b>" + t.symbol + "</b>: 1 000 000 ЦАРЬ = <b>" + f"{q.rub_amount:,.4f}" + " ₽</b>")
+            else:
+                lines.append(t.emoji + " " + t.symbol + ": недоступен")
+        except Exception:
+            lines.append(t.emoji + " " + t.symbol + ": ошибка")
+    await message.answer(NL.join(lines), reply_markup=reply_main_keyboard())
+
+
+@router.message(F.text == "💸 Продать")
+async def on_sell_btn(message: Message):
+    await message.answer("⤵ Выбери серию:", reply_markup=main_menu())
+
+
+@router.message(F.text == "📊 Калькулятор")
+async def on_calc_btn(message: Message):
+    await message.answer("Отправь: <code>/sell 1000000</code>", reply_markup=reply_main_keyboard())
+
+
+@router.message(F.text == "📜 История")
+async def on_history_btn(message: Message):
+    user_id = message.from_user.id if message.from_user else 0
+    items = HISTORY.get(user_id, [])
+    if not items:
+        await message.answer(
+            "📜 <b>История выводов</b>" + NL + NL
+            + "Пока пусто. Сделай первый вывод: нажми <b>💸 Продать</b>.",
+            reply_markup=reply_main_keyboard(),
+        )
+        return
+    lines = ["📜 <b>История выводов</b> <i>v" + BOT_VERSION + "</i>" + NL]
+    for it in reversed(items):
+        t = next((x for x in list_tokens() if x.slug == it["slug"]), None)
+        sym = t.symbol if t else it["slug"]
+        em = t.emoji if t else "👑"
+        ts = time.strftime("%d.%m %H:%M", time.localtime(it["ts"]))
+        lines.append(
+            em + " <b>" + sym + "</b> — " + f"{it['amount']:,}" + " = <b>" + f"{it['rub']:,.2f}" + " ₽</b>" + NL
+            + "   💳 " + it["method"] + " · " + it["status"] + " · " + ts
+        )
+    await message.answer(NL + NL.join(lines), reply_markup=reply_main_keyboard())
+
+
+@router.message(F.text == "🌐 Сайт")
+async def on_site_btn(message: Message):
+    await message.answer("🌐 " + SITE_URL, reply_markup=reply_main_keyboard())
+
+
+@router.message(F.text == "🎮 Игра")
+async def on_game_btn(message: Message):
+    await message.answer(
+        "🎮 Игра: " + GAME_URL,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎮 Запустить", web_app=WebAppInfo(url=GAME_URL))]
+        ]),
+    )
+
+
+@router.message(Command("sell", "withdraw", "quote"))
+async def cmd_sell(message: Message, command: Command):
+    args = command.args
+    user_id = message.from_user.id if message.from_user else 0
+    if not args or not args[0].isdigit():
+        await message.answer(
+            "Формат: <code>/sell 1000000</code> (ЦАРЬ). Минимум 250 000.",
+            reply_markup=reply_main_keyboard(),
+        )
+        return
+    amount = int(args[0])
+    if amount < 250_000:
+        await message.answer("❌ Минимальный вывод: 250 000 ЦАРЬ.", reply_markup=reply_main_keyboard())
+        return
+    t = list_tokens()[0]
+    try:
+        q = await feeds[t.slug].quote(amount)
+        if not q.ok:
+            await message.answer("⚠️ Курс недоступен, попробуй позже.", reply_markup=reply_main_keyboard())
+            return
+        rub = q.rub_amount
+        method = "СБП"
+        status = "✅ Готово к выводу"
+        add_to_history(user_id, t.slug, amount, rub, method, status)
+        await message.answer(
+            "👑 <b>" + t.symbol + "</b> → <b>" + f"{rub:,.2f}" + " ₽</b>" + NL
+            + "📤 " + f"{amount:,}" + " ЦАРЬ · 💳 " + method + NL + NL
+            + "<b>Способ получения:</b>" + NL
+            + "📱 СБП: <code>+79285448941</code>" + NL
+            + "💳 P2P: WalletBot Market" + NL + NL
+            + "👇 Жми «📜 История» — увидишь эту заявку",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📱 СБП +79285448941", url="https://t.me/BAAL_NIK_BOT?start=sbp")],
+                [InlineKeyboardButton(text="💳 P2P карта", url="https://t.me/BAAL_NIK_BOT?start=p2p")],
+                [InlineKeyboardButton(text="📜 Открыть историю", callback_data="show_history")],
+            ]),
+        )
+    except Exception as e:
+        logger.error("quote error: %s", e)
+        await message.answer("❌ Ошибка расчёта. Попробуй позже.", reply_markup=reply_main_keyboard())
+
+
+@router.callback_query(F.data == "show_history")
+async def on_history_cb(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    items = HISTORY.get(user_id, [])
+    if not items:
+        await callback.message.answer("📜 История пуста.")
+        await callback.answer()
+        return
+    lines = ["📜 <b>История</b> <i>v" + BOT_VERSION + "</i>" + NL]
+    for it in reversed(items):
+        ts = time.strftime("%d.%m %H:%M", time.localtime(it["ts"]))
+        lines.append("• " + f"{it['amount']:,}" + " = " + f"{it['rub']:,.2f}" + " ₽ · " + it["method"] + " · " + it["status"] + " · " + ts)
+    await callback.message.answer(NL.join(lines))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("token:"))
+async def on_token_cb(callback: CallbackQuery, state: FSMContext):
+    slug = callback.data.split(":", 1)[1]
+    await state.set_state(WithdrawForm.amount)
+    await state.update_data(token_slug=slug)
+    t = get_token(slug)
+    await callback.message.answer(
+        "👑 Выбрано: <b>" + t.symbol + " " + t.name + "</b>" + NL
+        + "Отправь сумму (мин 250 000):" + NL
+        + "<code>/sell " + slug + " 1000000</code>"
+    )
+    await callback.answer()
+
+
+async def main():
+    load_history()
+    logger.info("Starting bot v%s, history users: %d", BOT_VERSION, len(HISTORY))
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
