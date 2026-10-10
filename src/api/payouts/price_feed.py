@@ -11,10 +11,12 @@ logger = logging.getLogger(__name__)
 
 class PriceFeed:
     def __init__(self, *, token_master: str = TSAR_MASTER,
-                 token_pool: str = TSAR_USDT_POOL, pool_label: str = "USDT"):
+                 token_pool: str = TSAR_USDT_POOL, pool_label: str = "USDT",
+                 manual_rate: float = 0.0):
         self.token_master = token_master
         self.token_pool = token_pool
         self.pool_label = pool_label
+        self.manual_rate = float(manual_rate) if manual_rate else 0.0
         self._client: Optional[httpx.AsyncClient] = None
 
     async def _http(self) -> httpx.AsyncClient:
@@ -31,6 +33,8 @@ class PriceFeed:
             self._client = None
 
     async def get_price_usdt(self) -> float:
+        if self.manual_rate > 0:
+            return self.manual_rate
         try:
             r = await self._http()
             res = await r.get(
