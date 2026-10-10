@@ -1,4 +1,4 @@
-"""Telegram-бот "ЦАРЬ бот обменник" — v3.2 (7 токенов + конвертер монет)."""
+"""Telegram-бот "ЦАРЬ бот обменник" — v3.3 (7 токенов + конвертер + all_3_tsars)."""
 import asyncio
 import logging
 import os
@@ -24,9 +24,12 @@ from aiogram.types import (
 from api.payouts.tokens import (
     TOKENS, get_token, list_tokens, list_by_network, short_address,
 )
-from api.payouts.coins_to_tsar import convert_coins, fetch_cbr_silver, COIN_PRESETS
+from api.payouts.coins_to_tsar import (
+    convert_coins, convert_to_all_3_tsars,
+    fetch_cbr_silver, COIN_PRESETS,
+)
 
-BOT_VERSION = "2026-10-10-020"
+BOT_VERSION = "2026-10-10-021"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 SITE_URL = "https://tsar-rub-lt87ahb9.agent.mira.tg/"
 SUPPORT_USERNAME = "BAAL_NIK_chat"
@@ -52,10 +55,10 @@ class WithdrawFSM(StatesGroup):
 
 
 class ConvertFSM(StatesGroup):
-    waiting_count = State()      # кол-во монет
-    waiting_grams = State()      # масса 1 монеты
-    waiting_markup = State()     # наценка (по умолчанию 15)
-    waiting_tsar = State()       # в какой токен
+    waiting_count = State()
+    waiting_grams = State()
+    waiting_markup = State()
+    waiting_tsar = State()
 
 
 def main_kb() -> ReplyKeyboardMarkup:
@@ -133,7 +136,6 @@ def back_to_main_kb() -> InlineKeyboardMarkup:
 
 
 def tsar_choose_kb(prefix: str) -> InlineKeyboardMarkup:
-    """Выбор царь-токена для конвертера."""
     rows = []
     for t in TOKENS.values():
         rows.append([InlineKeyboardButton(
@@ -196,6 +198,7 @@ async def cmd_help(message: Message) -> None:
         "/sell 1000000 — расчёт для 1М ЦАРЬ\n"
         "/withdraw — пошаговый вывод (FSM)\n"
         "/convert — конвертер монет в ЦАРЬ (новое!)\n"
+        "/all3 — все 3 царя разом для 1 монеты 21г\n"
         "/history — история\n\n"
         f"<b>Сайт:</b> {SITE_URL}\n"
         f"<b>Поддержка:</b> @{SUPPORT_USERNAME}",
@@ -247,7 +250,7 @@ async def cmd_sell(message: Message) -> None:
             f"USD/RUB: <code>{r['usd_rub']}</code>\n"
             f"━━━━━━━━━━━━━━\n"
             f"Сумма: <b>{r['gross_rub']:,.2f} ₽</b>\n"
-            f"Комиссия: <code>{r['fee_rub']:,.2f} ₽</code>\n"
+            f"Комиссия: <code>{r['fee_rub']:,.2f} ₽</b>\n"
             f"━━━━━━━━━━━━━━\n"
             f"💵 <b>К получению: {r['net_rub']:,.2f} ₽</b>\n\n"
             f"Чтобы оформить — нажми 💸 Продать",
@@ -289,13 +292,49 @@ async def cmd_convert(message: Message, state: FSMContext) -> None:
         f"Наценка за изделие: <b>×15</b> (по умолчанию)\n\n"
         "<b>Шаг 1/4: сколько у тебя монет?</b>\n"
         "Например: <code>8</code>\n\n"
-        "📌 <b>Пример:</b> 8 монет × 21 г × 160.65 ₽/г × 15 = 405 238 ₽"
+        "<b>🆕 Или сразу все 3 царя разом:</b>"
     )
-    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="8 монет × 21 г", callback_data="preset:8:21")],
-        [InlineKeyboardButton(text="5 монет × 31.1 г", callback_data="preset:5:31.1")],
-        [InlineKeyboardButton(text="1 монета × 21 г", callback_data="preset:1:21")],
-    ]))
+    await message.answer(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="👑 1 монета 21г → все 3 царя", callback_data="all3:1:21")],
+            [InlineKeyboardButton(text="📦 8 монет 21г → все 3 царя", callback_data="all3:8:21")],
+            [InlineKeyboardButton(text="5 монет × 31.1 г", callback_data="preset:5:31.1")],
+            [InlineKeyboardButton(text="8 монет × 21 г", callback_data="preset:8:21")],
+            [InlineKeyboardButton(text="1 монета × 21 г", callback_data="preset:1:21")],
+        ]),
+    )
+
+
+@router.callback_query(F.data.startswith("all3:"))
+async def cb_all3(call: CallbackQuery) -> None:
+    _, count, grams = call.data.split(":")
+    count, grams = int(count), float(grams)
+    r = convert_to_all_3_tsars(count=count, grams_per_coin=grams)
+    text = r.to_text()
+    await call.message.edit_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💸 Продать ЦАРЬ", callback_data="back:net")],
+            [InlineKeyboardButton(text="🔄 Ещё раз", callback_data="again:convert")],
+            [InlineKeyboardButton(text="⏪ В главное меню", callback_data="back:main")],
+        ]),
+    )
+    await call.answer("3 царя посчитано 👑")
+
+
+@router.message(Command("all3"))
+async def cmd_all3(message: Message) -> None:
+    """Быстрый расчёт 1 монета 21г во все 3 царя."""
+    r = convert_to_all_3_tsars(count=1, grams_per_coin=21.0)
+    await message.answer(
+        r.to_text(),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💸 Продать ЦАРЬ", callback_data="back:net")],
+            [InlineKeyboardButton(text="🔄 Изменить параметры", callback_data="again:convert")],
+            [InlineKeyboardButton(text="⏪ В главное меню", callback_data="back:main")],
+        ]),
+    )
 
 
 @router.callback_query(F.data.startswith("preset:"))
@@ -534,7 +573,7 @@ async def fsm_amount(message: Message, state: FSMContext) -> None:
 
 
 async def main() -> None:
-    log.info("Tsar bot v%s starting (7 tokens + /convert coins)", BOT_VERSION)
+    log.info("Tsar bot v%s starting (7 tokens + /convert + /all3)", BOT_VERSION)
     dp.include_router(router)
     await dp.start_polling(bot)
 
