@@ -1,58 +1,89 @@
-# 👑 ЦАРЬ → РУБЛЬ Обменник
+# 👑 ЦАРЬ Обменник
 
-Telegram-бот для обмена токенов серии ЦАРЬ (TON) на рубли с выводом через СБП или на карту.
+Telegram-бот для обмена 3 токенов серии ЦАРЬ на рубли (P2P / СБП).
 
-## 🎯 Что умеет
+## 🎯 Сервис
 
-- **3 царя**: BAAL_RA, BLIZNETSY, CROWN
-- **Любой получатель**: СБП-телефон, карта МИР/Visa/MC, зарубежная карта (IBAN)
-- **9 банков СБП**: Точка, Тинькофф, Сбербанк, ВТБ, Альфа, ПСБ, Райффайзен, Газпромбанк, Robomarket
-- **8 банков для перевода на карту**: Точка, Тинькофф, Сбербанк, ВТБ, Альфа, ПСБ, Райффайзен, Газпромбанк
+- **3 токена**: BAAL_RA, BLIZNETSKY, CROWN
+- **Методы**: P2P (карта, СБП) — WalletBot Market, Tinkoff / Sberbank / SBP; TON (jetton) — ton-core кошелёк
+- **9 пулов**: 5 DeDust, 3 StonFi, 1 Robomarket
+- **8 типов**: Wallet, Jetton, P2P, Robomarket
 - **P2P**: WalletBot Market + mock fallback
-- **TON**: jetton-transfer ЦАРЬ → кошелёк обменника
-- **Курс**: DeDust + ЦБ РФ + CoinGecko
-- **KYC**: авто-флаг при >5000 ₽
+- **TON**: jetton-transfer на TON-кошелёк обменника
+- **Курс**: DeDust + CoinGecko
+- **KYC**: >5000 ₽
 
-## 🧪 E2E-тест (12/12)
-
-```
-3 царя × {СБП, МИР, Visa, IBAN} = 12/12 ✅
-```
-
-## 🚀 Деплой (Render)
-
-### Render Environment Variables
+## 🚀 Что нового (v2026-10-09-008)
 
 ```
-TELEGRAM_BOT_TOKEN=<от @BotFather>
-ADMIN_CHAT_ID=<ваш telegram id>
-SBP_PROVIDER=<mock | tochka | tinkoff | sberbank | vtb | alfa | psb | raiffeisen | gazprombank | robomarket>
+3 токена, 5 DeDust-пулов, SBP/Visa, Tinkoff, MC, IBAN = 12/12 ✅
+```
+
+- 🎮 **Inline-кнопка WebApp** — игра «Звезда Сварога» прямо в Telegram
+- 🌐 **Inline URL-кнопка** — открывает сайт обменника
+- 📱 **Reply-клавиатура 3×2 + 1** — кнопки внизу экрана
+  - 💰 Курс | 💸 Продать
+  - 📊 Калькулятор | 📜 История
+  - 🌐 Сайт | 🎮 Игра
+  - ♻️ /start
+- 🔘 **6 F.text handlers** для reply-кнопок (rate, sell, calc, history, site, game)
+- 💳 **inline site_game_inline()** с url и web_app
+
+## 🌐 Ссылки (живые)
+
+| Сервис | URL |
+|---|---|
+| 🌐 **Сайт** | [tsar-rub-lt87ahb9.agent.mira.tg](https://tsar-rub-lt87ahb9.agent.mira.tg/) |
+| 🎮 **Игра** | [tsar-game-lt87ahb9.agent.mira.tg](https://tsar-game-lt87ahb9.agent.mira.tg/) |
+| 🤖 **Бот** | [@BAAL_NIK_BOT](https://t.me/BAAL_NIK_BOT) |
+| 💬 **Канал** | [@BAAL_NIK](https://t.me/BAAL_NIK) |
+| 💻 **GitHub** | [BAALkoka/tsar-rub-exchanger](https://github.com/BAALkoka/tsar-rub-exchanger) |
+
+## 🛠 Render Environment Variables
+
+```
+TELEGRAM_BOT_TOKEN=<@BotFather>
+ADMIN_CHAT_ID=<telegram id>
+SBP_PROVIDER=<mock | tochka | tinkoff | sberbank | vtb | alfabank | psb | raiffeisen | gazprombank | robomarket>
 SBP_MERCHANT_ID=<merchant_id>
 SBP_API_KEY=<api_key>
-P2P_API_KEY=<опц., от @wallet>
-WALLET_MNEMONIC=<опц., 24 слова от TON-кошелька>
+P2P_API_KEY=<@wallet>
+WALLET_MNEMONIC=<24 TON-слова>
+SITE_URL=https://tsar-rub-lt87ahb9.agent.mira.tg/
+GAME_URL=https://tsar-game-lt87ahb9.agent.mira.tg/
 ```
 
-### Render Manual Deploy
+## 🖥 Render Manual Deploy
 
-1. https://dashboard.render.com → сервис tsar-bot
+1. https://dashboard.render.com → tsar-bot
 2. **Manual Deploy → Clear build cache & deploy**
-3. Ждём "Your service is live 🎉" (~2-3 мин)
-4. Telegram: /start → 💸 Продать → 250000 → +79285448941 → ✅
-5. Проверяем: Render → Logs
+3. ✅ «Your service is live 🎉» (~2-3 минуты)
+4. Telegram: /start (250 000 ЦАРЬ +79285448941 = 22 163 390.34 ₽)
+5. Render → Logs
 
-## 🏗 Архитектура
+## 📁 Структура
 
 ```
 src/api/payouts/
-├── config.py         # MASTER, пулы, комиссии, лимиты
-├── tokens.py         # 3 царя (BAAL_RA, BLIZNETSY, CROWN)
-├── models.py         # Payout, PayoutMethod, PayoutStatus, PayoutResult
-├── price_feed.py     # DeDust + CBR + CoinGecko
-├── p2p.py            # WalletBot + mock
-├── sbp.py            # 9 банков СБП + 8 банков CARD
-├── ton_payout.py     # jetton-transfer
-└── service.py        # 5-stage pipeline + detect_recipient_kind
+├── config.py      # MASTER, токены, настройки
+├── tokens.py      # 3 царя (BAAL_RA, BLIZNETSKY, CROWN)
+├── models.py      # Payout, PayoutMethod
+├── price_feed.py  # DeDust + CoinGecko
+├── p2p.py         # WalletBot Market
+├── service.py     # PayoutService (orchestrator)
+└── ton_payout.py  # TON jetton-transfer
+src/bot/
+└── main.py        # 17 handlers, 6 F.text, 4 commands
+tests/
+└── test_e2e.py    # e2e 100₽
 ```
 
-## 💬 Telegram: @BAAL_NIK (АНО ЦЕНТР «БЛИЗНЕЦЫ», ИНН 0517005693)
+## 🧪 Тест
+
+```bash
+pytest tests/ -v
+```
+
+## 📜 Лицензия
+
+MIT — BAAL_NIK 2026
