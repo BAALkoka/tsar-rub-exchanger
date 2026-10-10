@@ -1,12 +1,11 @@
 """Telegram-бот обменника ЦАРЬ → RUB. v2026-10-10-014.
 
-Подключает все handlers/ + показывает 3 царя + кнопки в /start.
+Подключает handlers/ + показывает 3 царя + кнопки в /start.
 """
 from __future__ import annotations
 import asyncio, json as J, logging, os, sys, time
 from pathlib import Path
 
-# Добавляем src в sys.path, чтобы работали оба import-стиля
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from aiogram import Bot, Dispatcher, Router, F
@@ -22,12 +21,10 @@ from aiogram.types import (
     Message, CallbackQuery,
 )
 
-# Импорт токенов и сервиса
 from api.payouts.tokens import TOKENS, get_token, list_tokens
 from api.payouts.price_feed import PriceFeed
 from api.payouts.p2p import P2PClient
 
-# Подключаем все handlers (start, balance, quote, withdraw)
 from bot.handlers import start, balance, quote, withdraw
 
 BOT_VERSION = "2026-10-10-014"
@@ -49,8 +46,7 @@ NL = "\n"
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
 
-# === История выводов (in-memory) ===
-HISTORY: dict = {}
+HISTORY = {}
 HISTORY_FILE = Path("/tmp/tsar_history.json")
 
 
@@ -74,7 +70,7 @@ def save_history() -> None:
         log.warning("save_history: %s", e)
 
 
-def add_to_history(user_id: int, slug: str, amount: int, rub: float, method: str, status: str) -> None:
+def add_to_history(user_id, slug, amount, rub, method, status) -> None:
     HISTORY.setdefault(user_id, []).append({
         "ts": time.time(), "slug": slug, "amount": amount,
         "rub": rub, "method": method, "status": status,
@@ -83,8 +79,13 @@ def add_to_history(user_id: int, slug: str, amount: int, rub: float, method: str
     save_history()
 
 
-# === Ценовые фиды (по одному на каждого царя) ===
-feeds: dict = {
+def short_master(m: str) -> str:
+    if not m:
+        return "—"
+    return m[:6] + "…" + m[-4:]
+
+
+feeds = {
     t.slug: PriceFeed(
         token_master=t.master,
         token_pool=t.pool,
@@ -97,8 +98,7 @@ p2p_client = P2PClient()
 log.info("BOT v%s, feeds: %s, tokens: %d", BOT_VERSION, list(feeds.keys()), len(list_tokens()))
 
 
-# === Клавиатуры ===
-def reply_main_keyboard() -> ReplyKeyboardMarkup:
+def reply_main_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="💰 Курс"), KeyboardButton(text="💸 Продать")],
@@ -111,7 +111,7 @@ def reply_main_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def site_game_inline() -> InlineKeyboardMarkup:
+def site_game_inline():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🌐 Сайт", url=SITE_URL),
@@ -124,7 +124,7 @@ def site_game_inline() -> InlineKeyboardMarkup:
     ])
 
 
-def tokens_inline() -> InlineKeyboardMarkup:
+def tokens_inline():
     buttons = []
     for t in list_tokens():
         buttons.append([
@@ -137,7 +137,6 @@ def tokens_inline() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-# === ОСНОВНОЙ /start — показывает ВСЕ 3 ЦАРЯ + кнопки ===
 main_router = Router(name="main")
 
 
@@ -150,26 +149,26 @@ async def cmd_start(message: Message) -> None:
         try:
             q = await feeds[t.slug].quote(1_000_000)
             if q.ok:
-                rate_text = f"1 000 000 ЦАРЬ = <b>{q.rub_amount:,.4f} ₽</b>"
+                rate_text = "1 000 000 ЦАРЬ = <b>" + f"{q.rub_amount:,.4f}" + " ₽</b>"
             else:
                 rate_text = "<i>курс временно недоступен</i>"
         except Exception as e:
-            rate_text = f"<i>ошибка: {e}</i>"
+            rate_text = "<i>ошибка</i>"
         tokens_block_lines.append(
-            f"{i}. {t.emoji} <b>{t.symbol}</b> — {t.name}\n"
-            f"   <code>{short_master(t.master)}</code>\n"
-            f"   💰 {rate_text}\n"
-            f"   📥 мин. вывод: <b>{t.min_tsar:,}</b> ЦАРЬ"
+            str(i) + ". " + t.emoji + " <b>" + t.symbol + "</b> — " + t.name + NL
+            + "   <code>" + short_master(t.master) + "</code>" + NL
+            + "   💰 " + rate_text + NL
+            + "   📥 мин. вывод: <b>" + f"{t.min_tsar:,}" + "</b> ЦАРЬ"
         )
 
     text = (
-        f"👑 <b>ЦАРЬ Обменник</b> <i>v{BOT_VERSION}</i>{NL}{NL}"
-        f"<b>Продай любой из {len(tokens_list)} царей за RUB.</b>{NL}"
-        f"Способы: <b>📱 СБП</b> (по телефону) или <b>💳 P2P</b> (карта).{NL}{NL}"
+        "👑 <b>ЦАРЬ Обменник</b> <i>v" + BOT_VERSION + "</i>" + NL + NL
+        + "<b>Продай любой из " + str(len(tokens_list)) + " царей за RUB.</b>" + NL
+        + "Способы: <b>📱 СБП</b> (по телефону) или <b>💳 P2P</b> (карта)." + NL + NL
         + NL.join(tokens_block_lines) + NL + NL
-        f"🌐 <b>Сайт:</b> {SITE_URL}{NL}"
-        f"🎮 <b>Игра:</b> {GAME_URL}{NL}{NL}"
-        f"👇 Жми кнопку ниже или <b>💸 Продать</b> ↓"
+        + "🌐 <b>Сайт:</b> " + SITE_URL + NL
+        + "🎮 <b>Игра:</b> " + GAME_URL + NL + NL
+        + "👇 Жми кнопку ниже или <b>💸 Продать</b> ↓"
     )
     await message.answer(text, reply_markup=site_game_inline())
     await message.answer(
@@ -178,35 +177,27 @@ async def cmd_start(message: Message) -> None:
     )
 
 
-def short_master(m: str) -> str:
-    if not m:
-        return "—"
-    return m[:6] + "…" + m[-4:]
-
-
 @main_router.message(F.text == "💰 Курс")
 async def on_rate(message: Message) -> None:
-    lines = [f"💱 <b>Курс DeDust-пулов</b> <i>v{BOT_VERSION}</i>" + NL]
+    lines = ["💱 <b>Курс DeDust-пулов</b> <i>v" + BOT_VERSION + "</i>" + NL]
     for t in list_tokens():
         try:
             q = await feeds[t.slug].quote(1_000_000)
             if q.ok:
                 lines.append(
-                    f"{t.emoji} <b>{t.symbol}</b>: 1 000 000 ЦАРЬ = <b>{q.rub_amount:,.4f} ₽</b>"
+                    t.emoji + " <b>" + t.symbol + "</b>: 1 000 000 ЦАРЬ = <b>"
+                    + f"{q.rub_amount:,.4f}" + " ₽</b>"
                 )
             else:
-                lines.append(f"{t.emoji} {t.symbol}: <i>—</i>")
-        except Exception as e:
-            lines.append(f"{t.emoji} {t.symbol}: <i>err</i>")
+                lines.append(t.emoji + " " + t.symbol + ": <i>—</i>")
+        except Exception:
+            lines.append(t.emoji + " " + t.symbol + ": <i>err</i>")
     await message.answer(NL.join(lines), reply_markup=reply_main_keyboard())
 
 
 @main_router.message(F.text == "💸 Продать")
 async def on_sell(message: Message) -> None:
-    await message.answer(
-        "⤵ <b>Выбери серию ЦАРЬ:</b>",
-        reply_markup=tokens_inline(),
-    )
+    await message.answer("⤵ <b>Выбери серию ЦАРЬ:</b>", reply_markup=tokens_inline())
 
 
 @main_router.message(F.text == "📊 Калькулятор")
@@ -228,28 +219,29 @@ async def on_history(message: Message) -> None:
             reply_markup=reply_main_keyboard(),
         )
         return
-    lines = [f"📜 <b>История выводов</b> <i>v{BOT_VERSION}</i>" + NL]
+    lines = ["📜 <b>История выводов</b> <i>v" + BOT_VERSION + "</i>" + NL]
     for it in reversed(items):
         t = next((x for x in list_tokens() if x.slug == it["slug"]), None)
         sym = t.symbol if t else it["slug"]
         em = t.emoji if t else "👑"
         ts = time.strftime("%d.%m %H:%M", time.localtime(it["ts"]))
         lines.append(
-            f"{em} <b>{sym}</b> — {it['amount']:,} = <b>{it['rub']:,.2f} ₽</b>" + NL
-            f"   💳 {it['method']} · {it['status']} · {ts}"
+            em + " <b>" + sym + "</b> — " + f"{it['amount']:,}"
+            + " = <b>" + f"{it['rub']:,.2f}" + " ₽</b>" + NL
+            + "   💳 " + it["method"] + " · " + it["status"] + " · " + ts
         )
     await message.answer(NL.join(lines), reply_markup=reply_main_keyboard())
 
 
 @main_router.message(F.text == "🌐 Сайт")
 async def on_site(message: Message) -> None:
-    await message.answer(f"🌐 {SITE_URL}", reply_markup=reply_main_keyboard())
+    await message.answer("🌐 " + SITE_URL, reply_markup=reply_main_keyboard())
 
 
 @main_router.message(F.text == "🎮 Игра")
 async def on_game(message: Message) -> None:
     await message.answer(
-        f"🎮 {GAME_URL}",
+        "🎮 " + GAME_URL,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🎮 Запустить", web_app=WebAppInfo(url=GAME_URL))],
         ]),
@@ -270,7 +262,7 @@ async def cmd_sell(message: Message, command: Command) -> None:
     t = list_tokens()[0]
     if amount < t.min_tsar:
         await message.answer(
-            f"❌ Мин. вывод: {t.min_tsar:,} ЦАРЬ.",
+            "❌ Мин. вывод: " + f"{t.min_tsar:,}" + " ЦАРЬ.",
             reply_markup=reply_main_keyboard(),
         )
         return
@@ -285,12 +277,12 @@ async def cmd_sell(message: Message, command: Command) -> None:
         rub = q.rub_amount
         add_to_history(uid, t.slug, amount, rub, "СБП", "✅ Готово")
         await message.answer(
-            f"👑 <b>{t.symbol}</b> → <b>{rub:,.2f} ₽</b>" + NL
-            f"📤 {amount:,} ЦАРЬ · 💳 СБП" + NL + NL
-            f"<b>Способ получения:</b>" + NL
-            f"📱 СБП: <code>+79285448941</code>" + NL
-            f"💳 P2P: WalletBot Market" + NL + NL
-            f"👇 Жми «📜 История» — увидишь эту заявку",
+            "👑 <b>" + t.symbol + "</b> → <b>" + f"{rub:,.2f}" + " ₽</b>" + NL
+            + "📤 " + f"{amount:,}" + " ЦАРЬ · 💳 СБП" + NL + NL
+            + "<b>Способ получения:</b>" + NL
+            + "📱 СБП: <code>+79285448941</code>" + NL
+            + "💳 P2P: WalletBot Market" + NL + NL
+            + "👇 Жми «📜 История» — увидишь эту заявку",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="📱 СБП", url="https://t.me/BAAL_NIK_BOT?start=sbp")],
                 [InlineKeyboardButton(text="💳 P2P", url="https://t.me/BAAL_NIK_BOT?start=p2p")],
@@ -310,38 +302,34 @@ async def on_history_cb(callback: CallbackQuery) -> None:
         await callback.message.answer("📜 Пусто.")
         await callback.answer()
         return
-    lines = [f"📜 <b>История</b> <i>v{BOT_VERSION}</i>" + NL]
+    lines = ["📜 <b>История</b> <i>v" + BOT_VERSION + "</i>" + NL]
     for it in reversed(items):
         ts = time.strftime("%d.%m %H:%M", time.localtime(it["ts"]))
         lines.append(
-            f"• {it['amount']:,} = {it['rub']:,.2f} ₽ · {it['method']} · {it['status']} · {ts}"
+            "• " + f"{it['amount']:,}" + " = " + f"{it['rub']:,.2f}"
+            + " ₽ · " + it["method"] + " · " + it["status"] + " · " + ts
         )
     await callback.message.answer(NL.join(lines))
     await callback.answer()
 
 
 @main_router.callback_query(F.data.startswith("token:"))
-async def on_token_cb(callback: CallbackQuery, state: FSMContext) -> None:
+async def on_token_cb(callback: CallbackQuery) -> None:
     slug = callback.data.split(":", 1)[1]
     t = get_token(slug)
+    example = max(t.min_tsar, 1_000_000)
     await callback.message.answer(
-        f"👑 Выбрано: <b>{t.symbol} {t.name}</b>" + NL
-        f"Мастер: <code>{t.master}</code>" + NL
-        f"Пул: <code>{t.pool}</code> ({t.pool_label})" + NL + NL
-        f"Отправь сумму (мин. {t.min_tsar:,}):" + NL
-        f"<code>/sell {amount_example(t)}</code>",
+        "👑 Выбрано: <b>" + t.symbol + " " + t.name + "</b>" + NL
+        + "Мастер: <code>" + t.master + "</code>" + NL
+        + "Пул: <code>" + t.pool + "</code> (" + t.pool_label + ")" + NL + NL
+        + "Отправь сумму (мин. " + f"{t.min_tsar:,}" + "):" + NL
+        + "<code>/sell " + f"{example:,}" + "</code>",
     )
     await callback.answer()
 
 
-def amount_example(t) -> int:
-    return max(t.min_tsar, 1_000_000)
-
-
-# === Подключение роутеров (порядок важен: handlers — после main) ===
-# Сначала main_router (наш /start с 3 царями)
+# === Подключение роутеров ===
 dp.include_router(main_router)
-# Потом существующие handlers (start, balance, quote, withdraw)
 dp.include_router(start.router)
 dp.include_router(balance.router)
 dp.include_router(quote.router)
