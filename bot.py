@@ -1,21 +1,4 @@
-"""Telegram-бот "ЦАРЬ бот обменник" — v3.1 (7 токенов: 3 TON + 4 BSC).
-
-UX:
-  • Главное меню: [💰 Курс] [📊 Калькулятор] [💸 Продать] [📜 История] [❓ Помощь] [🪙 Токены]
-  • /tokens — все 7 токенов TON+BSC
-  • /quote — выбор сети → выбор токена → inline-кнопки графиков
-  • /withdraw — 4-шаговый FSM (сеть → токен → сумма → способ)
-  • Кнопка ⏪ Назад в FSM-сообщениях
-
-Команды:
-  /start      — главное меню
-  /tokens     — все 7 токенов TON+BSC
-  /quote      — узнать курс (с inline-выбором)
-  /sell N     — расчёт для N ЦАРЬ
-  /withdraw   — пошаговый вывод (FSM)
-  /history    — история
-  /help       — справка
-"""
+"""Telegram-бот "ЦАРЬ бот обменник" — v3.2 (7 токенов + конвертер монет)."""
 import asyncio
 import logging
 import os
@@ -41,8 +24,9 @@ from aiogram.types import (
 from api.payouts.tokens import (
     TOKENS, get_token, list_tokens, list_by_network, short_address,
 )
+from api.payouts.coins_to_tsar import convert_coins, fetch_cbr_silver, COIN_PRESETS
 
-BOT_VERSION = "2026-10-10-019"
+BOT_VERSION = "2026-10-10-020"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 SITE_URL = "https://tsar-rub-lt87ahb9.agent.mira.tg/"
 SUPPORT_USERNAME = "BAAL_NIK_chat"
@@ -60,7 +44,6 @@ router = Router()
 USD_RUB = float(os.getenv("USD_RUB", "89.5"))
 
 
-# ==================== FSM ====================
 class WithdrawFSM(StatesGroup):
     waiting_network = State()
     waiting_token = State()
@@ -68,13 +51,20 @@ class WithdrawFSM(StatesGroup):
     waiting_method = State()
 
 
-# ==================== Клавиатуры ====================
+class ConvertFSM(StatesGroup):
+    waiting_count = State()      # кол-во монет
+    waiting_grams = State()      # масса 1 монеты
+    waiting_markup = State()     # наценка (по умолчанию 15)
+    waiting_tsar = State()       # в какой токен
+
+
 def main_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="💰 Курс"), KeyboardButton(text="📊 Калькулятор")],
-            [KeyboardButton(text="💸 Продать"), KeyboardButton(text="📜 История")],
-            [KeyboardButton(text="🪙 Токены"), KeyboardButton(text="❓ Помощь")],
+            [KeyboardButton(text="💸 Продать"), KeyboardButton(text="🪙 Конвертер")],
+            [KeyboardButton(text="🪙 Токены"), KeyboardButton(text="📜 История")],
+            [KeyboardButton(text="❓ Помощь")],
         ],
         resize_keyboard=True,
     )
@@ -142,40 +132,39 @@ def back_to_main_kb() -> InlineKeyboardMarkup:
     ])
 
 
-# ==================== Расчёт ====================
+def tsar_choose_kb(prefix: str) -> InlineKeyboardMarkup:
+    """Выбор царь-токена для конвертера."""
+    rows = []
+    for t in TOKENS.values():
+        rows.append([InlineKeyboardButton(
+            text=f"{t.emoji} {t.name} ({t.network.upper()})",
+            callback_data=f"{prefix}:{t.slug}",
+        )])
+    rows.append([InlineKeyboardButton(text="⏪ В главное меню", callback_data="back:main")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 async def estimate(slug: str, amount: int) -> dict:
     t = get_token(slug)
     if not t:
         return {"ok": False, "error": "Токен не найден"}
     if amount < t.min_tsar:
         return {"ok": False, "error": f"Минимум {t.min_tsar:,} {t.symbol}"}
-    # Цена в USD (mock)
     prices = {
-        "BAAL_RA": 0.0001,
-        "BLIZNETSY": 0.00009,
-        "CROWN": 0.00012,
-        "BSC_TSAR_1": 0.1058,
-        "BSC_TSAR_2": 0.00000000004424,
-        "BSC_HTTPS_DR": 0.0001,
-        "BSC_TSAR_4": 0.0001,
+        "BAAL_RA": 0.0001, "BLIZNETSY": 0.00009, "CROWN": 0.00012,
+        "BSC_TSAR_1": 0.1058, "BSC_TSAR_2": 0.00000000004424,
+        "BSC_HTTPS_DR": 0.0001, "BSC_TSAR_4": 0.0001,
     }
     usd_per = prices.get(slug, 0.0001)
     gross_rub = amount * usd_per * USD_RUB
     fee = gross_rub * 0.0075
     net_rub = gross_rub - fee
     return {
-        "ok": True,
-        "token": t,
-        "amount": amount,
-        "usd_per": usd_per,
-        "gross_rub": gross_rub,
-        "fee_rub": fee,
-        "net_rub": net_rub,
-        "usd_rub": USD_RUB,
+        "ok": True, "token": t, "amount": amount, "usd_per": usd_per,
+        "gross_rub": gross_rub, "fee_rub": fee, "net_rub": net_rub, "usd_rub": USD_RUB,
     }
 
 
-# ==================== /start ====================
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     ton = list_by_network("ton")
@@ -185,17 +174,16 @@ async def cmd_start(message: Message) -> None:
         f"У меня <b>{len(ton)} токена в TON</b> и <b>{len(bsc)} токена в BSC</b>.\n\n"
         "Что умею:\n"
         "• <b>💰 Курс</b> — текущий курс всех 7 токенов\n"
-        "• <b>📊 Калькулятор</b> — посчитать сколько получишь\n"
+        "• <b>📊 Калькулятор</b> — ЦАРЬ → рубли\n"
+        "• <b>🪙 Конвертер</b> — серебро/золото → ЦАРЬ (новое!)\n"
         "• <b>💸 Продать</b> — оформить вывод на СБП / карту\n"
-        "• <b>🪙 Токены</b> — все 7 токенов с графиками\n"
-        "• <b>📜 История</b> — последние заявки\n\n"
+        "• <b>🪙 Токены</b> — все 7 токенов с графиками\n\n"
         f"🌐 Сайт: {SITE_URL}\n"
         f"💬 Поддержка: @{SUPPORT_USERNAME}"
     )
     await message.answer(text, reply_markup=main_kb())
 
 
-# ==================== /help ====================
 @router.message(F.text == "❓ Помощь")
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
@@ -204,9 +192,10 @@ async def cmd_help(message: Message) -> None:
         "<b>Команды:</b>\n"
         "/start — главное меню\n"
         "/tokens — все 7 токенов TON+BSC\n"
-        "/quote — узнать курс (выбор сети → токена)\n"
+        "/quote — узнать курс\n"
         "/sell 1000000 — расчёт для 1М ЦАРЬ\n"
         "/withdraw — пошаговый вывод (FSM)\n"
+        "/convert — конвертер монет в ЦАРЬ (новое!)\n"
         "/history — история\n\n"
         f"<b>Сайт:</b> {SITE_URL}\n"
         f"<b>Поддержка:</b> @{SUPPORT_USERNAME}",
@@ -217,7 +206,6 @@ async def cmd_help(message: Message) -> None:
     )
 
 
-# ==================== /tokens ====================
 @router.message(F.text == "🪙 Токены")
 @router.message(Command("tokens"))
 async def cmd_tokens(message: Message) -> None:
@@ -234,14 +222,12 @@ async def cmd_tokens(message: Message) -> None:
     await message.answer(text, reply_markup=network_kb())
 
 
-# ==================== /quote ====================
 @router.message(F.text == "💰 Курс")
 @router.message(Command("quote"))
 async def cmd_quote(message: Message) -> None:
     await message.answer("👑 Выбери сеть для просмотра курса:", reply_markup=network_kb())
 
 
-# ==================== /sell ====================
 @router.message(F.text == "📊 Калькулятор")
 @router.message(Command("sell"))
 async def cmd_sell(message: Message) -> None:
@@ -271,7 +257,6 @@ async def cmd_sell(message: Message) -> None:
     await message.answer("📊 Калькулятор. Выбери сеть:", reply_markup=network_kb())
 
 
-# ==================== /withdraw ====================
 @router.message(F.text == "💸 Продать")
 @router.message(Command("withdraw"))
 async def cmd_withdraw(message: Message, state: FSMContext) -> None:
@@ -282,7 +267,6 @@ async def cmd_withdraw(message: Message, state: FSMContext) -> None:
     )
 
 
-# ==================== /history ====================
 @router.message(F.text == "📜 История")
 @router.message(Command("history"))
 async def cmd_history(message: Message) -> None:
@@ -290,6 +274,130 @@ async def cmd_history(message: Message) -> None:
         "📜 <b>История заявок</b>\n\nПока пусто. Оформи первую через /withdraw",
         reply_markup=back_to_main_kb(),
     )
+
+
+# ==================== /convert — конвертер монет ====================
+@router.message(F.text == "🪙 Конвертер")
+@router.message(Command("convert"))
+async def cmd_convert(message: Message, state: FSMContext) -> None:
+    cbr = await fetch_cbr_silver()
+    await state.set_state(ConvertFSM.waiting_count)
+    await state.update_data(cbr=cbr, markup=15.0)
+    text = (
+        "🪙 <b>Конвертер: серебро → ЦАРЬ</b>\n\n"
+        f"Курс ЦБ РФ (серебро 999): <b>{cbr:.2f} ₽/г</b>\n"
+        f"Наценка за изделие: <b>×15</b> (по умолчанию)\n\n"
+        "<b>Шаг 1/4: сколько у тебя монет?</b>\n"
+        "Например: <code>8</code>\n\n"
+        "📌 <b>Пример:</b> 8 монет × 21 г × 160.65 ₽/г × 15 = 405 238 ₽"
+    )
+    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="8 монет × 21 г", callback_data="preset:8:21")],
+        [InlineKeyboardButton(text="5 монет × 31.1 г", callback_data="preset:5:31.1")],
+        [InlineKeyboardButton(text="1 монета × 21 г", callback_data="preset:1:21")],
+    ]))
+
+
+@router.callback_query(F.data.startswith("preset:"))
+async def cb_preset(call: CallbackQuery, state: FSMContext) -> None:
+    _, count, grams = call.data.split(":")
+    await state.update_data(count=int(count), grams_per_coin=float(grams))
+    await state.set_state(ConvertFSM.waiting_markup)
+    await call.message.edit_text(
+        f"📌 Преcет: <b>{count} монет × {grams} г</b>\n\n"
+        f"<b>Шаг 2/4: наценка за грамм изделия?</b>\n"
+        f"По умолчанию: <code>15</code>\n"
+        f"Можно изменить: <code>10</code>, <code>20</code>, <code>30</code>\n\n"
+        f"Формула: ЦБ × наценка × г = ₽ за монету"
+    )
+    await call.answer()
+
+
+@router.message(ConvertFSM.waiting_count)
+async def fsm_count(message: Message, state: FSMContext) -> None:
+    if not message.text.isdigit() or int(message.text) < 1:
+        await message.answer("⚠️ Введи целое положительное число")
+        return
+    await state.update_data(count=int(message.text))
+    await state.set_state(ConvertFSM.waiting_grams)
+    await message.answer(
+        "<b>Шаг 2/4: масса 1 монеты в граммах?</b>\n"
+        "Например: <code>21</code>, <code>31.1</code>, <code>50</code>"
+    )
+
+
+@router.message(ConvertFSM.waiting_grams)
+async def fsm_grams(message: Message, state: FSMContext) -> None:
+    try:
+        g = float(message.text.replace(",", "."))
+        if g <= 0:
+            raise ValueError
+    except ValueError:
+        await message.answer("⚠️ Введи положительное число (например 21 или 31.1)")
+        return
+    await state.update_data(grams_per_coin=g)
+    await state.set_state(ConvertFSM.waiting_markup)
+    await message.answer(
+        "<b>Шаг 3/4: наценка за грамм изделия?</b>\n"
+        "По умолчанию <code>15</code> (нажми /skip чтобы оставить)\n"
+        "Другие варианты: <code>10</code>, <code>20</code>, <code>30</code>"
+    )
+
+
+@router.message(ConvertFSM.waiting_markup)
+async def fsm_markup(message: Message, state: FSMContext) -> None:
+    if message.text.strip() in ("/skip", "skip", "по умолчанию", "15"):
+        markup = 15.0
+    else:
+        try:
+            markup = float(message.text.replace(",", "."))
+            if markup < 1:
+                raise ValueError
+        except ValueError:
+            await message.answer("⚠️ Введи число (например 15) или /skip")
+            return
+    await state.update_data(markup=markup)
+    await state.set_state(ConvertFSM.waiting_tsar)
+    data = await state.get_data()
+    cbr = data.get("cbr", 160.65)
+    await message.answer(
+        f"<b>Шаг 4/4: в какой ЦАРЬ конвертируем?</b>\n\n"
+        f"Параметры:\n"
+        f"• Курс ЦБ: <code>{cbr:.2f} ₽/г</code>\n"
+        f"• Наценка: <b>×{markup}</b>\n\n"
+        f"Выбери токен 👇",
+        reply_markup=tsar_choose_kb("cvt"),
+    )
+
+
+@router.callback_query(F.data.startswith("cvt:"))
+async def cb_cvt(call: CallbackQuery, state: FSMContext) -> None:
+    slug = call.data.split(":")[1]
+    data = await state.get_data()
+    cbr = data.get("cbr", 160.65)
+    count = data.get("count", 0)
+    grams = data.get("grams_per_coin", 0.0)
+    markup = data.get("markup", 15.0)
+    r = convert_coins(
+        count=count, grams_per_coin=grams, cbr_per_gram=cbr,
+        markup=markup, tsar_slug=slug, usd_rub=USD_RUB,
+    )
+    await call.message.edit_text(
+        r.to_text(),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Ещё раз", callback_data="again:convert")],
+            [InlineKeyboardButton(text="💸 Продать эти ЦАРЬ", callback_data=f"sell:{slug}")],
+            [InlineKeyboardButton(text="⏪ В главное меню", callback_data="back:main")],
+        ]),
+    )
+    await state.clear()
+    await call.answer("Готово ✅")
+
+
+@router.callback_query(F.data == "again:convert")
+async def cb_again(call: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await cmd_convert(call.message, state)
 
 
 # ==================== CALLBACKS ====================
@@ -402,7 +510,6 @@ async def cb_back(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
 
 
-# ==================== FSM HANDLERS ====================
 @router.message(WithdrawFSM.waiting_amount)
 async def fsm_amount(message: Message, state: FSMContext) -> None:
     if not message.text.isdigit():
@@ -426,9 +533,8 @@ async def fsm_amount(message: Message, state: FSMContext) -> None:
     await message.answer(text, reply_markup=method_kb())
 
 
-# ==================== Запуск ====================
 async def main() -> None:
-    log.info("Tsar bot v%s starting (7 tokens: 3 TON + 4 BSC)", BOT_VERSION)
+    log.info("Tsar bot v%s starting (7 tokens + /convert coins)", BOT_VERSION)
     dp.include_router(router)
     await dp.start_polling(bot)
 
