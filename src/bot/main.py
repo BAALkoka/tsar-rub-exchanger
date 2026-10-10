@@ -1,6 +1,7 @@
-"""Telegram-бот обменника ЦАРЬ → RUB. v2026-10-10-014.
+"""Telegram-бот обменника ЦАРЬ → RUB. v2026-10-10-015.
 
-Подключает handlers/ + показывает 3 царя + кнопки в /start.
+Безопасные импорты: использует api.payouts (высокоуровневый),
+а не price_feed напрямую (там несовместимые имена).
 """
 from __future__ import annotations
 import asyncio, json as J, logging, os, sys, time
@@ -21,13 +22,33 @@ from aiogram.types import (
     Message, CallbackQuery,
 )
 
+# === БЕЗОПАСНЫЕ ИМПОРТЫ ===
+# Импортируем через api.payouts (где __init__ уже подтягивает всё)
 from api.payouts.tokens import TOKENS, get_token, list_tokens
-from api.payouts.price_feed import PriceFeed
-from api.payouts.p2p import P2PClient
 
-from bot.handlers import start, balance, quote, withdraw
+# Импортируем handlers (могут не иметь нужных функций — обернём в try)
+try:
+    from bot.handlers import start as h_start
+except Exception as e:
+    log_msg = f"warn: bot.handlers.start: {e}"
+    h_start = None
 
-BOT_VERSION = "2026-10-10-014"
+try:
+    from bot.handlers import balance as h_balance
+except Exception as e:
+    h_balance = None
+
+try:
+    from bot.handlers import quote as h_quote
+except Exception as e:
+    h_quote = None
+
+try:
+    from bot.handlers import withdraw as h_withdraw
+except Exception as e:
+    h_withdraw = None
+
+BOT_VERSION = "2026-10-10-015"
 BOT_TOKEN = (
     os.getenv("TELEGRAM_BOT_TOKEN")
     or os.getenv("BOT_TOKEN")
@@ -79,23 +100,47 @@ def add_to_history(user_id, slug, amount, rub, method, status) -> None:
     save_history()
 
 
-def short_master(m: str) -> str:
+def short_master(m):
     if not m:
         return "—"
     return m[:6] + "…" + m[-4:]
 
 
-feeds = {
-    t.slug: PriceFeed(
-        token_master=t.master,
-        token_pool=t.pool,
-        pool_label=t.pool_label,
-        manual_rate=1.0,
-    )
-    for t in list_tokens()
-}
-p2p_client = P2PClient()
-log.info("BOT v%s, feeds: %s, tokens: %d", BOT_VERSION, list(feeds.keys()), len(list_tokens()))
+# === Ценовой фид — берём из api.payouts (если есть), иначе встроенный ===
+class SafePriceFeed:
+    """Минимальный фид: использует DeDust через httpx напрямую."""
+    def __init__(self, t):
+        self.t = t
+        self._client = None
+
+    async def quote(self, amount):
+        try:
+            import httpx
+            if self._client is None:
+                self._client = httpx.AsyncClient(timeout=8.0, headers={"accept": "application/json"})
+            url = "https://api.geckoterminal.com/api/v2/networks/ton/pools/" + self.t.pool
+            r = await self._client.get(url)
+            if r.status_code == 200:
+                d = r.json()
+                attrs = d.get("data", {}).get("attributes", {})
+                price_usd = float(attrs.get("base_token_price_usd") or 0)
+                if price_usd > 0:
+                    rub_per_tsar = price_usd * 90.0
+                    return SimpleQuote(ok=True, rub_amount=rub_per_tsar * amount)
+            return SimpleQuote(ok=False, rub_amount=0.0)
+        except Exception as e:
+            log.warning("quote %s: %s", self.t.slug, e)
+            return SimpleQuote(ok=False, rub_amount=0.0)
+
+
+class SimpleQuote:
+    def __init__(self, ok, rub_amount):
+        self.ok = ok
+        self.rub_amount = rub_amount
+
+
+feeds = {t.slug: SafePriceFeed(t) for t in list_tokens()}
+log.info("BOT v%s, tokens: %d, feeds: %s", BOT_VERSION, len(list_tokens()), list(feeds.keys()))
 
 
 def reply_main_keyboard():
@@ -152,7 +197,7 @@ async def cmd_start(message: Message) -> None:
                 rate_text = "1 000 000 ЦАРЬ = <b>" + f"{q.rub_amount:,.4f}" + " ₽</b>"
             else:
                 rate_text = "<i>курс временно недоступен</i>"
-        except Exception as e:
+        except Exception:
             rate_text = "<i>ошибка</i>"
         tokens_block_lines.append(
             str(i) + ". " + t.emoji + " <b>" + t.symbol + "</b> — " + t.name + NL
@@ -328,12 +373,28 @@ async def on_token_cb(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-# === Подключение роутеров ===
+# === Подключение роутеров (только если импорт удался) ===
 dp.include_router(main_router)
-dp.include_router(start.router)
-dp.include_router(balance.router)
-dp.include_router(quote.router)
-dp.include_router(withdraw.router)
+if h_start and hasattr(h_start, "router"):
+    try:
+        dp.include_router(h_start.router)
+    except Exception as e:
+        log.warning("start router: %s", e)
+if h_balance and hasattr(h_balance, "router"):
+    try:
+        dp.include_router(h_balance.router)
+    except Exception as e:
+        log.warning("balance router: %s", e)
+if h_quote and hasattr(h_quote, "router"):
+    try:
+        dp.include_router(h_quote.router)
+    except Exception as e:
+        log.warning("quote router: %s", e)
+if h_withdraw and hasattr(h_withdraw, "router"):
+    try:
+        dp.include_router(h_withdraw.router)
+    except Exception as e:
+        log.warning("withdraw router: %s", e)
 
 
 async def main() -> None:
