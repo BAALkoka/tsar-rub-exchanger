@@ -3,227 +3,247 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="ЦАРЬ — обмен криптовалюты TON/USDT на рубли через СБП и карту. 9 банков, мгновенный вывод, реальный курс.">
-<title>ЦАРЬ — Обмен криптовалюты на рубли</title>
-<meta property="og:title" content="ЦАРЬ — Обмен криптовалюты на рубли">
-<meta property="og:description" content="Мгновенный обмен TON/USDT на рубли. 9 банков, реальный курс.">
+<meta name="description" content="ЦАРЬ — обменник TON/USDT на рубли через P2P, СБП и карту. 9 банков, мгновенный вывод. Обменник работает прямо на сайте.">
+<title>ЦАРЬ — Обменник криптовалюты на рубли (P2P / СБП / Карта)</title>
+<meta property="og:title" content="ЦАРЬ — Обменник криптовалюты на рубли (P2P / СБП / Карта)">
+<meta property="og:description" content="Прямо на сайте: P2P + СБП + Карта в любой банк РФ.">
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { font-family: 'Inter', sans-serif; background: #0a0a0a; color: #fff; scroll-behavior: smooth; }
-  body { background: radial-gradient(ellipse at 50% 0%, rgba(212,175,55,0.25) 0%, transparent 50%), linear-gradient(180deg, #0a0a0a 0%, #1a0f0a 100%); min-height: 100vh; padding-bottom: 160px; }
-  .hero { text-align: center; padding: 40px 20px 30px; position: relative; overflow: hidden; }
-  .crown { font-size: 80px; line-height: 1; margin-bottom: 10px; filter: drop-shadow(0 0 20px rgba(255,200,80,0.6)); animation: float 3s ease-in-out infinite; }
-  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-  h1 { font-family: 'Cinzel', serif; font-size: 72px; font-weight: 900; background: linear-gradient(135deg, #ffd700 0%, #ff8c00 50%, #ffd700 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: 4px; margin-bottom: 8px; }
-  .subtitle { font-size: 18px; color: #c9a961; letter-spacing: 6px; text-transform: uppercase; margin-bottom: 24px; font-weight: 500; }
-  .tagline { font-size: 22px; color: #e0e0e0; margin: 20px auto; max-width: 600px; line-height: 1.5; }
-  .tagline .accent { color: #ffd700; font-weight: 700; }
-  .hero-video-single { max-width: 360px; margin: 24px auto 0; }
-  .hero-video-single .hero-video { width: 100%; border-radius: 20px; border: 2px solid rgba(255,200,80,0.5); box-shadow: 0 0 40px rgba(255,200,80,0.4); display: block; background: #0a0500; }
-  .hero-mini-charts { display: flex; gap: 12px; justify-content: center; margin: 20px auto 0; max-width: 700px; flex-wrap: wrap; }
-  .mini-chart-link { display: flex; align-items: center; gap: 10px; padding: 12px 20px; background: linear-gradient(135deg, rgba(255,200,80,0.15), rgba(200,100,50,0.1)); border: 1.5px solid rgba(255,200,80,0.4); border-radius: 14px; color: #fff; text-decoration: none; transition: all 0.2s; min-width: 220px; }
-  .mini-chart-link:hover { background: rgba(255,200,80,0.25); border-color: #ffd700; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(255,200,80,0.2); }
-  .mini-chart-icon { font-size: 28px; }
-  .mini-chart-title { font-family: 'Cinzel', serif; font-size: 16px; font-weight: 700; color: #ffd700; }
-  .mini-chart-liq { margin-left: auto; padding: 4px 10px; background: rgba(0,0,0,0.4); border-radius: 12px; font-size: 12px; color: #4ade80; font-weight: 600; }
-  @keyframes gallop { 0%, 100% { transform: translateY(0) translateX(0); } 25% { transform: translateY(-6px) translateX(-3px); } 75% { transform: translateY(-3px) translateX(3px); } }
-  .flame { position: absolute; bottom: 0; left: 0; right: 0; height: 40%; background: radial-gradient(ellipse at 50% 100%, rgba(255,150,0,0.5) 0%, transparent 70%); animation: flicker 0.6s ease-in-out infinite alternate; pointer-events: none; }
-  @keyframes flicker { 0% { opacity: 0.7; } 100% { opacity: 1; } }
-  .tsar-label { position: absolute; bottom: 8%; left: 50%; transform: translateX(-50%); font-family: 'Cinzel', serif; font-size: 32px; font-weight: 900; color: #ffd700; letter-spacing: 4px; text-shadow: 0 0 20px rgba(255,200,80,0.8), 0 0 40px rgba(255,150,0,0.6); z-index: 4; }
-  .tsar-note { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.6); color: #ffd700; padding: 4px 10px; border-radius: 12px; font-size: 12px; z-index: 5; border: 1px solid rgba(255,200,80,0.3); }
-  .rates { max-width: 900px; margin: 50px auto 30px; padding: 0 20px; }
-  .rates h2 { font-family: 'Cinzel', serif; font-size: 36px; text-align: center; color: #ffd700; margin-bottom: 30px; }
-  .live-tag { display: inline-block; background: #00d97e; color: #000; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
-  .rate-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
-  .rate-card { background: linear-gradient(135deg, rgba(40,25,15,0.9) 0%, rgba(20,15,10,0.9) 100%); border: 1px solid rgba(255,200,80,0.3); border-radius: 16px; padding: 24px; text-align: center; transition: transform 0.3s, box-shadow 0.3s; cursor: pointer; }
-  .rate-card:hover { transform: translateY(-4px); box-shadow: 0 10px 40px rgba(255,200,80,0.2); }
-  .rate-card.selected { border-color: #ffd700; box-shadow: 0 0 30px rgba(255,200,80,0.4); }
-  .rate-name { font-size: 18px; color: #c9a961; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 2px; }
-  .rate-value { font-size: 36px; font-weight: 700; color: #ffd700; margin: 8px 0; }
-  .rate-sub { font-size: 14px; color: #888; }
-  .order-form { max-width: 600px; margin: 50px auto; padding: 32px; background: linear-gradient(135deg, rgba(40,25,15,0.95) 0%, rgba(20,15,10,0.95) 100%); border: 1px solid rgba(255,200,80,0.3); border-radius: 20px; }
-  .order-form h2 { font-family: 'Cinzel', serif; font-size: 28px; color: #ffd700; margin-bottom: 24px; text-align: center; }
-  .form-group { margin-bottom: 18px; }
-  .form-group label { display: block; font-size: 14px; color: #c9a961; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
-  .form-group input, .form-group select { width: 100%; padding: 14px 16px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,200,80,0.3); border-radius: 10px; color: #fff; font-size: 16px; font-family: 'Inter', sans-serif; }
-  .form-group input:focus, .form-group select:focus { outline: none; border-color: #ffd700; }
-  .form-result { text-align: center; font-size: 22px; color: #ffd700; margin: 20px 0; padding: 16px; background: rgba(255,200,80,0.1); border-radius: 10px; min-height: 24px; }
-  .form-submit { width: 100%; padding: 16px; background: linear-gradient(135deg, #ffd700 0%, #ff8c00 100%); color: #0a0500; font-size: 18px; font-weight: 700; border: none; border-radius: 12px; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; }
-  .features { max-width: 1000px; margin: 60px auto; padding: 0 20px; }
-  .features h2 { font-family: 'Cinzel', serif; font-size: 36px; text-align: center; color: #ffd700; margin-bottom: 40px; }
-  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; }
-  .feature { text-align: center; padding: 20px; }
-  .feature .icon { font-size: 48px; margin-bottom: 12px; }
-  .feature h3 { font-size: 18px; color: #ffd700; margin-bottom: 8px; }
-  .feature p { font-size: 14px; color: #aaa; line-height: 1.5; }
-  .banks { max-width: 800px; margin: 50px auto; padding: 0 20px; text-align: center; }
-  .banks h2 { font-family: 'Cinzel', serif; font-size: 32px; color: #ffd700; margin-bottom: 24px; }
-  .bank-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
-  .bank { background: rgba(255,200,80,0.1); border: 1px solid rgba(255,200,80,0.3); padding: 8px 16px; border-radius: 24px; font-size: 14px; color: #ffd700; }
-  .contacts { text-align: center; margin: 50px auto 30px; padding: 0 20px; max-width: 600px; }
-  .contacts a { color: #ffd700; text-decoration: none; margin: 0 12px; }
-  .action-bar { position: fixed; bottom: 0; left: 0; right: 0; background: linear-gradient(180deg, transparent 0%, rgba(10,5,0,0.95) 30%, #0a0500 100%); backdrop-filter: blur(20px); padding: 20px; display: flex; gap: 12px; justify-content: center; border-top: 1px solid rgba(255,200,80,0.3); z-index: 1000; }
-  .btn { flex: 1; max-width: 220px; padding: 16px 24px; border: none; border-radius: 14px; font-size: 16px; font-weight: 700; cursor: pointer; text-decoration: none; text-align: center; display: flex; align-items: center; justify-content: center; gap: 8px; }
-  .btn-primary { background: linear-gradient(135deg, #ffd700 0%, #ff8c00 100%); color: #0a0500; box-shadow: 0 4px 20px rgba(255,200,80,0.4); }
-  .btn-secondary { background: rgba(255,200,80,0.15); color: #ffd700; border: 1px solid rgba(255,200,80,0.4); }
-  .btn-tertiary { background: rgba(80,200,255,0.15); color: #50c8ff; border: 1px solid rgba(80,200,255,0.4); }
-  @media (max-width: 600px) { h1 { font-size: 48px; } .crown { font-size: 56px; } .action-bar { flex-direction: column; padding: 12px; } .btn { max-width: none; } .order-form { margin: 30px 16px; padding: 20px; } }
-
-  .chart-block { background: rgba(20,10,0,0.6); border: 1px solid rgba(255,200,80,0.3); border-radius: 16px; overflow: hidden; transition: all 0.2s; }
-  .chart-block:hover { border-color: #ffd700; box-shadow: 0 0 20px rgba(255,200,80,0.3); }
-  .chart-block h3 { font-family: 'Cinzel', serif; font-size: 16px; color: #ffd700; padding: 14px 18px; margin: 0; background: rgba(255,200,80,0.08); border-bottom: 1px solid rgba(255,200,80,0.2); }
-  .chart-block iframe { width: 100%; height: 380px; display: block; border: none; }
-  .chart-large { max-width: 1200px; margin: 24px auto; background: rgba(20,10,0,0.7); border: 2px solid rgba(255,200,80,0.3); border-radius: 20px; overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.5); }
-  .chart-large:hover { border-color: #ffd700; box-shadow: 0 8px 50px rgba(255,200,80,0.3); }
-  .chart-large-header { display: flex; align-items: center; gap: 16px; padding: 18px 24px; background: linear-gradient(135deg, rgba(255,200,80,0.15), rgba(200,100,50,0.08)); border-bottom: 2px solid rgba(255,200,80,0.3); flex-wrap: wrap; }
-  .chart-large-header h3 { font-family: 'Cinzel', serif; font-size: 24px; color: #ffd700; margin: 0; flex: 1; }
-  .chart-large-link { padding: 10px 18px; background: rgba(255,200,80,0.2); border: 1px solid #ffd700; border-radius: 14px; color: #ffd700; text-decoration: none; font-size: 14px; font-weight: 600; transition: all 0.2s; }
-  .chart-large-link:hover { background: rgba(255,200,80,0.4); transform: translateY(-1px); }
-  .chart-large iframe { width: 100%; height: 700px; display: block; border: none; background: #0a0500; }
-  @media (max-width: 768px) { .chart-large iframe { height: 500px; } .chart-large-header h3 { font-size: 18px; } }
-  .liquidity { max-width: 1100px; margin: 60px auto; padding: 0 20px; }
-  .liquidity h2 { font-family: 'Cinzel', serif; font-size: 36px; text-align: center; color: #ffd700; margin-bottom: 8px; }
-  .liquidity-sub { text-align: center; color: #aaa; margin-bottom: 24px; }
-  .liquidity-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
-  .liq-card { background: linear-gradient(135deg, rgba(40,20,10,0.8), rgba(20,10,5,0.9)); border: 2px solid rgba(255,100,50,0.4); border-radius: 16px; padding: 24px; text-align: center; }
-  .liq-card.liq-good { border-color: rgba(80,255,120,0.5); box-shadow: 0 0 20px rgba(80,255,120,0.2); }
-  .liq-name { font-size: 18px; font-weight: 700; color: #ffd700; margin-bottom: 8px; }
-  .liq-amount { font-size: 36px; font-weight: 900; color: #fff; margin: 12px 0; }
-  .liq-warn { font-size: 13px; color: #ff8866; margin: 8px 0; }
-  .liq-card.liq-good .liq-warn { color: #88ff88; }
-  .liq-rate { font-size: 14px; color: #ccc; margin: 12px 0; }
-  .liq-link { display: inline-block; margin-top: 12px; padding: 8px 16px; background: rgba(255,200,80,0.2); border: 1px solid #ffd700; border-radius: 20px; color: #ffd700; text-decoration: none; font-size: 14px; }
-  .liq-link:hover { background: rgba(255,200,80,0.4); }
-  .liquidity-foot { text-align: center; font-size: 13px; color: #888; margin-top: 24px; }
-  .liquidity-foot a { color: #ffd700; }
-
+:root { --gold: #ffd700; --crimson: #ff8c00; --dark: #0a0500; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', sans-serif; background: linear-gradient(180deg, #0a0500 0%, #1a0a00 50%, #0a0500 100%); color: #fff; min-height: 100vh; padding: 0 0 80px 0; }
+h1 { font-family: 'Cinzel', serif; font-size: 96px; font-weight: 900; color: var(--gold); text-align: center; letter-spacing: 8px; text-shadow: 0 0 30px rgba(255,200,80,0.6); margin-top: 40px; animation: float 3s ease-in-out infinite; }
+.crown { font-size: 80px; text-align: center; display: block; }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+.subtitle { font-size: 18px; color: #c9a961; letter-spacing: 6px; text-transform: uppercase; margin-bottom: 24px; font-weight: 500; }
+.tagline { text-align: center; font-size: 18px; color: #c9a961; margin-bottom: 40px; }
+.accent { color: var(--gold); font-weight: 700; }
+.rate-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; max-width: 1000px; margin: 40px auto; padding: 0 20px; }
+.rate-card { background: linear-gradient(135deg, rgba(40,25,15,0.9) 0%, rgba(20,15,10,0.9) 100%); border: 1px solid rgba(255,200,80,0.3); border-radius: 16px; padding: 24px; text-align: center; transition: transform 0.3s, box-shadow 0.3s; cursor: pointer; }
+.rate-card:hover { transform: translateY(-4px); box-shadow: 0 10px 40px rgba(255,200,80,0.2); }
+.rate-name { font-size: 18px; color: #c9a961; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 2px; }
+.rate-value { font-size: 28px; color: var(--gold); font-weight: 700; margin-bottom: 8px; }
+.rate-source { font-size: 12px; color: #888; }
+.order-form { max-width: 600px; margin: 50px auto; padding: 32px; background: linear-gradient(135deg, rgba(40,25,15,0.95) 0%, rgba(20,15,10,0.95) 100%); border: 1px solid rgba(255,200,80,0.3); border-radius: 20px; }
+.order-form h2 { font-family: 'Cinzel', serif; font-size: 28px; color: var(--gold); margin-bottom: 24px; text-align: center; }
+.form-group { margin-bottom: 18px; }
+.form-group label { display: block; font-size: 14px; color: #c9a961; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+.form-group input, .form-group select { width: 100%; padding: 14px 16px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,200,80,0.3); border-radius: 10px; color: #fff; font-size: 16px; font-family: 'Inter', sans-serif; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: var(--gold); }
+.form-result { text-align: center; font-size: 18px; color: var(--gold); margin: 20px 0; padding: 16px; background: rgba(255,200,80,0.1); border-radius: 10px; min-height: 24px; line-height: 1.5; }
+.form-submit { width: 100%; padding: 16px; background: linear-gradient(135deg, var(--gold) 0%, var(--crimson) 100%); color: var(--dark); font-size: 18px; font-weight: 700; border: none; border-radius: 12px; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; }
+.token-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.token-pick { padding: 14px 10px; background: rgba(0,0,0,0.4); border: 2px solid rgba(255,200,80,0.25); border-radius: 12px; color: #fff; cursor: pointer; font-family: inherit; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.token-pick:hover { border-color: var(--gold); transform: translateY(-2px); }
+.token-pick.selected { border-color: var(--gold); background: linear-gradient(135deg, rgba(255,200,80,0.25), rgba(255,140,0,0.15)); }
+.t-emoji { font-size: 24px; }
+.t-name { font-size: 14px; font-weight: 700; color: var(--gold); }
+.t-name small { display: block; font-size: 10px; color: #c9a961; font-weight: 400; text-transform: uppercase; letter-spacing: 1px; }
+.t-rate { font-size: 12px; color: #c9a961; }
+@media (max-width: 600px) { h1 { font-size: 48px; } .crown { font-size: 56px; } .order-form { margin: 30px 16px; padding: 20px; } .token-grid { grid-template-columns: 1fr 1fr; } }
+.method-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.method-pick { padding: 14px 8px; background: rgba(0,0,0,0.4); border: 2px solid rgba(255,200,80,0.25); border-radius: 12px; color: #fff; cursor: pointer; font-family: inherit; transition: all 0.2s; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.method-pick:hover { border-color: var(--gold); transform: translateY(-2px); }
+.method-pick.selected { border-color: var(--gold); background: linear-gradient(135deg, rgba(255,200,80,0.25), rgba(255,140,0,0.15)); box-shadow: 0 0 20px rgba(255,200,80,0.3); }
+.m-emoji { font-size: 28px; line-height: 1; }
+.m-name { font-size: 14px; font-weight: 700; color: var(--gold); }
+.m-name + small { font-size: 10px; color: #c9a961; text-transform: uppercase; letter-spacing: 1px; }
+@media (max-width: 600px) { .method-grid { grid-template-columns: 1fr; } }
+.form-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+.form-submit { font-family: inherit; transition: transform 0.2s, box-shadow 0.2s; }
+.form-submit-primary { background: linear-gradient(135deg, var(--gold) 0%, var(--crimson) 100%); color: var(--dark); }
+.form-submit-tg { background: linear-gradient(135deg, #29b6f6 0%, #0288d1 100%); color: #fff; }
+.form-submit:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(255,200,80,0.4); }
+.form-submit-tg:hover { box-shadow: 0 8px 24px rgba(41,182,246,0.4); }
+@media (max-width: 600px) { .form-actions { grid-template-columns: 1fr; } }
+#bankSelect { background: rgba(0,0,0,0.5) !important; }
+.toast { position: fixed; top: 20px; right: 20px; background: linear-gradient(135deg, #1a0a00, #0a0500); border: 2px solid var(--gold); border-radius: 12px; padding: 16px 20px; color: var(--gold); font-family: 'Inter', sans-serif; font-size: 14px; z-index: 1000; box-shadow: 0 10px 40px rgba(0,0,0,0.6); max-width: 360px; opacity: 0; transform: translateY(-20px); transition: opacity 0.3s, transform 0.3s; }
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.success { border-color: #4caf50; color: #4caf50; }
+.toast.error { border-color: #f44336; color: #f44336; }
 </style>
 </head>
 <body>
-
-<section class="hero">
-  <div class="crown">👑</div>
+<header style="text-align:center;padding:40px 20px 20px">
+  <span class="crown">👑</span>
   <h1>ЦАРЬ</h1>
-  <div class="subtitle">обмен криптовалюты</div>
-  <p class="tagline"><span class="accent">Мгновенный</span> обмен TON/USDT на рубли.<br>Вывод на <span class="accent">СБП или карту</span> любого банка РФ.</p>
-  <div class="hero-video-single">
-    <video autoplay loop muted playsinline class="hero-video">
-      <source src="https://raw.githubusercontent.com/BAALkoka/tsar-rub-exchanger/main/docs/landing/assets/hero.mp4" type="video/mp4" />
-    </video>
-  </div>
-  <div class="hero-mini-charts">
-    <a href="https://www.geckoterminal.com/ton/pools/EQAQdBFfSkFbXWB_3jYaREV7aqGXj1S09NX3E03sOkZaUaKz" target="_blank" class="mini-chart-link">
-      <span class="mini-chart-icon">👑</span>
-      <span class="mini-chart-title">Царь-Близнецы</span>
-      <span class="mini-chart-liq">$1 013</span>
-    </a>
-    
-  </div>
+  <div class="subtitle">обменник криптовалюты</div>
+  <p class="tagline"><span class="accent">Мгновенный</span> обмен TON/USDT на рубли.<br>Вывод через <span class="accent">P2P</span>, <span class="accent">СБП</span> или <span class="accent">карту</span> любого банка РФ.</p>
+</header>
+<section class="rate-cards" id="rateCards">
+  <div class="rate-card" data-slug="BAAL_RA_MAIN"><div class="rate-name">👑 ЦАРЬ (основной)</div><div class="rate-value" data-usd="0">обновляется…</div><div class="rate-source">DeDust · USDT</div></div>
+  <div class="rate-card" data-slug="BLIZNETSY"><div class="rate-name">👑 Царь-Близнецы</div><div class="rate-value" data-usd="0">обновляется…</div><div class="rate-source">DeDust · TON</div></div>
+  <div class="rate-card" data-slug="BAAL_RA"><div class="rate-name">👑 BAAL_RA</div><div class="rate-value" data-usd="0">обновляется…</div><div class="rate-source">DeDust · USDT</div></div>
+  <div class="rate-card" data-slug="CROWN"><div class="rate-name">👑 Царь с Коронкой</div><div class="rate-value" data-usd="0">обновляется…</div><div class="rate-source">DeDust · TON</div></div>
 </section>
-
-<section class="rates">
-  <h2>💰 Курс в реальном времени <span class="live-tag">● LIVE</span></h2>
-  <div class="chart-large chart-large-main">
-    <div class="chart-large-header">
-      <h3>👑 ЦАРЬ / TON <span class="badge-main">★ ОСНОВНОЙ</span></h3>
-      <a href="https://www.geckoterminal.com/ton/pools/EQDRCDwolvF9dWrGSelvK_H2QHxYCK7vqBD_-kw_8v45PTZf" target="_blank" class="chart-large-link">📈 GeckoTerminal</a>
+<section class="order-form" id="orderForm">
+  <h2>👑 Обменник ЦАРЬ → РУБЛЬ</h2>
+  <p style="text-align:center;color:#c9a961;margin-bottom:20px">Прямо на сайте — без Telegram. <b>P2P</b> · <b>СБП</b> · <b>Карта</b> в любой банк РФ.</p>
+  <div class="form-group">
+    <label>⚜️ Выбери царя</label>
+    <div class="token-grid">
+      <button type="button" class="token-pick selected" data-slug="BAAL_RA_MAIN" data-poolname="ЦАРЬ (основной)">
+        <span class="t-emoji">👑</span>
+        <span class="t-name">ЦАРЬ <small>основной пул</small></span>
+        <span class="t-rate">обновляется…</span>
+      </button>
+      <button type="button" class="token-pick" data-slug="BLIZNETSY" data-poolname="Царь-Близнецы">
+        <span class="t-emoji">👑</span>
+        <span class="t-name">Близнецы <small>BLIZNETSY</small></span>
+        <span class="t-rate">обновляется…</span>
+      </button>
+      <button type="button" class="token-pick" data-slug="BAAL_RA" data-poolname="BAAL_RA">
+        <span class="t-emoji">👑</span>
+        <span class="t-name">BAAL_RA <small>редкий</small></span>
+        <span class="t-rate">обновляется…</span>
+      </button>
+      <button type="button" class="token-pick" data-slug="CROWN" data-poolname="Царь с Коронкой">
+        <span class="t-emoji">👑</span>
+        <span class="t-name">Коронка <small>CROWN</small></span>
+        <span class="t-rate">обновляется…</span>
+      </button>
     </div>
-    <iframe src="https://www.geckoterminal.com/ton/pools/EQDRCDwolvF9dWrGSelvK_H2QHxYCK7vqBD_-kw_8v45PTZf?embed=1&info=1&swaps=1&grayscale=0&light_chart=0&chart_type=price&resolution=15m" frameborder="0" allow="clipboard-write" allowfullscreen loading="lazy"></iframe>
   </div>
-
-  <div class="chart-large">
-    <div class="chart-large-header">
-      <h3>👑 ЦАРЬ / TON 0.25%</h3>
-      <a href="https://www.geckoterminal.com/ton/pools/EQDGUZi_NjzljeAtIXzSQ5eku9YeamABuRftyKN7HC-6Rk_K" target="_blank" class="chart-large-link">📈 GeckoTerminal</a>
+  <div class="form-group">
+    <label>💳 Способ получения</label>
+    <div class="method-grid">
+      <button type="button" class="method-pick selected" data-method="SBP">
+        <span class="m-emoji">📱</span>
+        <span class="m-name">СБП</span>
+        <small>по номеру телефона</small>
+      </button>
+      <button type="button" class="method-pick" data-method="P2P">
+        <span class="m-emoji">🤝</span>
+        <span class="m-name">P2P</span>
+        <small>перевод между физлицами</small>
+      </button>
+      <button type="button" class="method-pick" data-method="CARD">
+        <span class="m-emoji">💳</span>
+        <span class="m-name">На карту</span>
+        <small>МИР / Visa / MC</small>
+      </button>
     </div>
-    <iframe src="https://www.geckoterminal.com/ton/pools/EQDGUZi_NjzljeAtIXzSQ5eku9YeamABuRftyKN7HC-6Rk_K?embed=1&info=1&swaps=1&grayscale=0&light_chart=0&chart_type=price&resolution=15m" frameborder="0" allow="clipboard-write" allowfullscreen loading="lazy"></iframe>
   </div>
-
-  <div class="chart-large">
-    <div class="chart-large-header">
-      <h3>👑 Царь-Близнецы / TON</h3>
-      <a href="https://www.geckoterminal.com/ton/pools/EQAQdBFfSkFbXWB_3jYaREV7aqGXj1S09NX3E03sOkZaUaKz" target="_blank" class="chart-large-link">📈 GeckoTerminal</a>
-    </div>
-    <iframe src="https://www.geckoterminal.com/ton/pools/EQAQdBFfSkFbXWB_3jYaREV7aqGXj1S09NX3E03sOkZaUaKz?embed=1&info=1&swaps=1&grayscale=0&light_chart=0&chart_type=price&resolution=15m" frameborder="0" allow="clipboard-write" allowfullscreen loading="lazy"></iframe>
+  <div class="form-group">
+    <label>🏦 Банк получателя</label>
+    <select id="bankSelect">
+      <option value="any">Любой банк РФ</option>
+      <option value="sberbank">🏛 Сбербанк</option>
+      <option value="tinkoff">💛 Тинькофф</option>
+      <option value="alfa">🔴 Альфа</option>
+      <option value="vtb">🔵 ВТБ</option>
+      <option value="tochka">⚫ Точка</option>
+      <option value="psb">🟢 ПСБ</option>
+      <option value="raiffeisen">🟡 Райффайзен</option>
+      <option value="gazprombank">🟠 Газпромбанк</option>
+      <option value="robomarket">🤖 Robomarket</option>
+    </select>
   </div>
-
-</section>
-
-
-
-
-
-<section class="order-form">
-  <h2>📝 Заявка на обмен</h2>
-  <div class="form-group"><label>Токен</label><select id="tokenSelect"><option value="BAAL_RA_MAIN">👑 ЦАРЬ (основной) · 11.10 ₽</option><option value="BAAL_RA">👑 BAAL_RA · 17.17 ₽</option><option value="BLIZNETSY">👑 BLIZNETSY</option></select></div>
-  <div class="form-group"><label>Сумма в ЦАРЬ (min 250 000)</label><input type="number" id="amountInput" placeholder="250000" min="250000" step="1"></div>
-  <div class="form-result" id="formResult">Выберите токен и введите сумму</div>
-  <button class="form-submit" id="submitBtn">💸 Открыть в боте</button>
-</section>
-
-<section class="features">
-  <h2>⚡ Преимущества</h2>
-  <div class="feature-grid">
-    <div class="feature"><div class="icon">⚡</div><h3>Мгновенно</h3><p>Заявка обрабатывается за 30 секунд</p></div>
-    <div class="feature"><div class="icon">🔒</div><h3>Безопасно</h3><p>AML/KYC, защита сделки</p></div>
-    <div class="feature"><div class="icon">💎</div><h3>3 царя</h3><p>BAAL_RA, BLIZNETSY, основной TON-пул</p></div>
-    <div class="feature"><div class="icon">📱</div><h3>В Telegram</h3><p>Бот прямо в мессенджере</p></div>
+  <div class="form-group">
+    <label id="recipientLabel">📞 Телефон получателя (для СБП)</label>
+    <input type="tel" id="recipientInput" placeholder="+79285448941" inputmode="tel">
   </div>
-</section>
-
-<section class="banks">
-  <h2>🏦 9 банков СБП + 8 банков CARD</h2>
-  <div class="bank-list">
-    <div class="bank">Сбербанк</div><div class="bank">Тинькофф</div><div class="bank">Альфа-Банк</div>
-    <div class="bank">ВТБ</div><div class="bank">ПСБ</div><div class="bank">Райффайзен</div>
-    <div class="bank">Газпромбанк</div><div class="bank">Точка</div><div class="bank">Robomarket</div>
+  <div class="form-group">
+    <label>💰 Сумма в ЦАРЬ (min 250 000)</label>
+    <input type="number" id="amountInput" placeholder="250000" min="250000" step="1">
   </div>
+  <div class="form-result" id="formResult">👑 Выбери царя, способ, банк и введи сумму</div>
+  <div class="form-actions">
+    <button class="form-submit form-submit-primary" id="submitBtn">💸 Обменять</button>
+    <button class="form-submit form-submit-tg" id="tgBtn">📲 Через Telegram</button>
+  </div>
+  <p style="text-align:center;color:#888;margin-top:14px;font-size:12px">
+    🔒 Заявки обрабатываются автоматически. Вывод за 1-3 мин.
+  </p>
 </section>
-
-<section class="contacts">
-  <p>💬 <a href="https://t.me/RA_WEB3">@RA_WEB3</a> · 📢 <a href="https://t.me/RA_BAAL">@RA_BAAL</a> · 🌐 <a href="https://sites.google.com/view/baal25/">sites.google.com/view/baal25</a></p>
-</section>
-
-<nav class="action-bar">
-  <a href="https://t.me/BAAL_NIK_BOT" class="btn btn-primary">💸 Продать</a>
-  <a href="https://t.me/RA_WEB3" class="btn btn-secondary">💬 Чат</a>
-  <a href="https://t.me/RA_BAAL" class="btn btn-tertiary">📢 Канал</a>
-</nav>
-
+<footer style="text-align:center;padding:40px 20px;color:#888">
+  <p>💬 <a href="https://t.me/RA_WEB3" style="color:var(--gold)">@RA_WEB3</a> · 📢 <a href="https://t.me/RA_BAAL" style="color:var(--gold)">@RA_BAAL</a></p>
+  <p style="margin-top:12px;font-size:12px">© 2026 ЦАРЬ · Обменник v2 (P2P/SBP/CARD)</p>
+</footer>
 <script>
-  const RATES = { BAAL_RA_MAIN: 11.10, BAAL_RA: 17.17, BLIZNETSY: 0.0000039 };
-
-  document.querySelectorAll('.rate-card').forEach(card => {
-    card.addEventListener('click', () => {
-      document.querySelectorAll('.rate-card').forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
-      document.getElementById('tokenSelect').value = card.dataset.token;
-      recalc();
-    });
+const POOLS = {
+  'BAAL_RA_MAIN': 'EQDRCDwolvF9dWrGSelvK_H2QHxYCK7vqBD_-kw_8v45PTZf',
+  'BLIZNETSY':    'EQAQdBFfSkFbXWB_3jYaREV7aqGXj1S09NX3E03sOkZaUaKz',
+  'BAAL_RA':      'EQBfclRZ2puWZvqy85DbMhKnqZh2386mxrOKki8GZo3YDgq4',
+  'CROWN':        'EQDGUZi_NjzljeAtIXzSQ5eku9YeamABuRftyKN7HC-6Rk_K'
+};
+let currentMethod = 'SBP';
+let currentSlug = 'BAAL_RA_MAIN';
+function showToast(msg, type) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + (type || '');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.classList.add('show'), 10);
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 4000);
+}
+function selectedSlug() { return currentSlug; }
+document.querySelectorAll('.token-pick').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.token-pick').forEach(x => x.classList.remove('selected'));
+    b.classList.add('selected');
+    currentSlug = b.dataset.slug;
+    recalc();
   });
-
-  function recalc() {
-    const token = document.getElementById('tokenSelect').value;
-    const amount = parseFloat(document.getElementById('amountInput').value);
-    const rate = RATES[token] || 0.0000039;
-    const out = document.getElementById('formResult');
-    if (!amount) { out.textContent = 'Выберите токен и введите сумму'; return; }
-    if (amount < 250000) { out.innerHTML = '⚠️ Минимум 250 000 ЦАРЬ (сейчас ' + amount.toLocaleString('ru-RU') + ')'; return; }
-    const total = (amount * rate).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    out.innerHTML = '💎 ' + amount.toLocaleString('ru-RU') + ' ' + token + ' = <strong>' + total + ' ₽</strong>';
-  }
-  document.getElementById('tokenSelect').addEventListener('change', recalc);
-  document.getElementById('amountInput').addEventListener('input', recalc);
-  document.getElementById('submitBtn').addEventListener('click', () => {
-    const token = document.getElementById('tokenSelect').value;
-    const amount = document.getElementById('amountInput').value;
-    if (!amount || amount < 250000) { alert('Минимум 250 000 ЦАРЬ'); return; }
-    window.open('https://t.me/BAAL_NIK_BOT?start=sell_' + token + '_' + amount, '_blank');
+});
+document.querySelectorAll('.method-pick').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.method-pick').forEach(x => x.classList.remove('selected'));
+    b.classList.add('selected');
+    currentMethod = b.dataset.method;
+    const inp = document.getElementById('recipientInput');
+    const lbl = document.getElementById('recipientLabel');
+    if (currentMethod === 'SBP') {
+      inp.placeholder = '+79285448941'; inp.type = 'tel';
+      lbl.textContent = '📞 Телефон получателя (для СБП)';
+    } else if (currentMethod === 'CARD') {
+      inp.placeholder = '2200 1234 5678 9012 (16 цифр)'; inp.type = 'text';
+      lbl.textContent = '💳 Номер карты получателя (МИР/Visa/MC)';
+    } else {
+      inp.placeholder = 'UQA... (TON-кошелёк получателя)'; inp.type = 'text';
+      lbl.textContent = '🤝 TON-кошелёк получателя (для P2P)';
+    }
+    recalc();
   });
+});
+function recalc() {
+  const amount = parseFloat(document.getElementById('amountInput').value) || 0;
+  const bank = document.getElementById('bankSelect').value;
+  const out = document.getElementById('formResult');
+  if (amount < 250000) { out.innerHTML = '👑 Выбери царя и введи сумму (min 250 000)'; return; }
+  const btn = document.querySelector('.token-pick.selected');
+  const usdPerToken = parseFloat(btn?.dataset.usd || 0);
+  const usdRub = 92.5;
+  const gross = amount * usdPerToken * usdRub;
+  const fee = gross * 0.0075;
+  const net = gross - fee;
+  const bankName = bank === 'any' ? 'любой банк' : bank.toUpperCase();
+  out.innerHTML = '<b>' + amount.toLocaleString('ru') + '</b> ЦАРЬ → <b style="color:#4caf50;font-size:26px">' + net.toLocaleString('ru', {maximumFractionDigits: 2}) + ' ₽</b><br><span style="font-size:12px;color:#888">' + currentMethod + ' · ' + bankName + ' · комиссия ' + fee.toLocaleString('ru', {maximumFractionDigits: 2}) + ' ₽</span>';
+}
+document.getElementById('amountInput').addEventListener('input', recalc);
+document.getElementById('bankSelect').addEventListener('change', recalc);
+recalc();
+document.getElementById('submitBtn').addEventListener('click', () => {
+  const amount = parseFloat(document.getElementById('amountInput').value);
+  const bank = document.getElementById('bankSelect').value;
+  const recipient = document.getElementById('recipientInput').value.trim();
+  if (!amount || amount < 250000) { showToast('⚠️ Минимум 250 000 ЦАРЬ', 'error'); return; }
+  if (!recipient) { showToast('⚠️ Укажи ' + (currentMethod === 'SBP' ? 'телефон' : currentMethod === 'CARD' ? 'номер карты' : 'TON-кошелёк'), 'error'); return; }
+  if (currentMethod === 'SBP' && !recipient.match(/^\\+7\\d{10}$/)) { showToast('⚠️ Телефон формата +7XXXXXXXXXX', 'error'); return; }
+  if (currentMethod === 'CARD' && recipient.replace(/\\s/g, '').length < 16) { showToast('⚠️ Карта: минимум 16 цифр', 'error'); return; }
+  const order = { id: 'WEB-' + Date.now().toString(36).toUpperCase(), slug: currentSlug, method: currentMethod, bank, recipient, amount, ts: Date.now() };
+  const orders = JSON.parse(localStorage.getItem('tsar_orders') || '[]');
+  orders.push(order);
+  localStorage.setItem('tsar_orders', JSON.stringify(orders));
+  showToast('✅ Заявка ' + order.id + ' создана! Перейди в Telegram для оплаты', 'success');
+  setTimeout(() => { window.open('https://t.me/BAAL_NIK_BOT?start=pay_' + currentSlug + '_' + amount + '_' + order.id, '_blank'); }, 1000);
+});
+document.getElementById('tgBtn').addEventListener('click', () => {
+  const amount = document.getElementById('amountInput').value || 250000;
+  window.open('https://t.me/BAAL_NIK_BOT?start=sell_' + currentSlug + '_' + amount, '_blank');
+});
 </script>
-
 </body>
 </html>
