@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin — Tsar Exchange</title>
+  <style>
+    body{font-family:Arial;margin:12px}
+    table{width:100%;border-collapse:collapse}
+    td,th{padding:8px;border:1px solid #ddd}
+    .btn{padding:6px 10px;background:#2d89ef;color:#fff;border-radius:6px;text-decoration:none}
+  </style>
+</head>
+<body>
+  <h2>Админ: ордера</h2>
+  <div id="list">Загружаю...</div>
+
+  <script>
+    async function load(){
+      const r = await fetch('/api/admin/orders');
+      const j = await r.json();
+      const rows = j.orders.map(o => `<tr><td>${o.id}</td><td>${o.user_id}</td><td>${o.network}</td><td>${o.amount_tokens}</td><td>${o.status}</td><td><a class="btn" href="#" onclick="pay(${o.id})">Выплатить</a></td></tr>`).join('');
+      document.getElementById('list').innerHTML = `<table><thead><tr><th>ID</th><th>User</th><th>Network</th><th>Tokens</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+    async function pay(id){
+      alert('Нажата кнопка выплатить для order ' + id + '. Реальная интеграция payout должна быть подключена в backend.');
+    }
+    load();
+  </script>
+</body>
+</html>
