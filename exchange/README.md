@@ -1,13 +1,54 @@
-# tsar-rub-exchanger — Exchange MVP scaffold
+const { ethers } = require('ethers');
+require('dotenv').config();
 
-Этот раздел репозитория содержит каркас минимально-работоспособного обменника для токенов серии "👑 ЦАРЬ" (TON и Binance Smart Chain) с выплатой в рублях через карточные выводы (SBP / эквайринг) и P2P (Binance P2P).
+const rpc = process.env.BSC_RPC;
+if (!rpc) {
+  console.error('BSC_RPC is not set. Set it in env before starting monitor.');
+  process.exit(1);
+}
 
-Важное: это только программная реализация MVP. Для реальных выплат в фиат требуются договоры с банками/эквайерами, KYC/AML, лицензирование — всё это вы принимаете на себя.
+const provider = new ethers.JsonRpcProvider(rpc);
+const tokenAddress = process.env.CSARY_TOKEN_CONTRACT_BSC;
 
-Что в этом ветке:
-- backend/ — Node.js сервис: REST API, очередь ордеров, watcher для блокчейнов (TON, BSC)
-- admin/ — простая панель администратора для ручной проверки и запуска выплат
-- docs/ — архитектура, требования по интеграции и checklist безопасности
-- .env.example — где указывать секреты и ключи
+if (!tokenAddress) {
+  console.error('CSARY_TOKEN_CONTRACT_BSC is not set.');
+  process.exit(1);
+}
 
-Дальше в README (docs/architecture.md) описаны следующие шаги для подключения сервисов и запуска.
+const ABI = [
+  'event Transfer(address indexed from, address indexed to, uint256 value)'
+];
+
+const token = new ethers.Contract(tokenAddress, ABI, provider);
+
+function start() {
+  console.log('BSC monitor is starting for token:', tokenAddress);
+  token.on('Transfer', async (from, to, value, event) => {
+    const payload = {
+      txHash: event.transactionHash,
+      network: 'BSC',
+      toAddress: to,
+      amountTokens: ethers.formatUnits(value, 0),
+      userId: process.env.DEFAULT_USER_ID || 'system',
+      from,
+    };
+
+    console.log('Detected Transfer:', payload);
+
+    if (process.env.API_URL) {
+      try {
+        const response = await fetch(`${process.env.API_URL}/api/webhook/deposit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const text = await response.text();
+        console.log('Webhook response:', response.status, text);
+      } catch (err) {
+        console.error('Failed to send webhook', err);
+      }
+    }
+  });
+}
+
+start();
