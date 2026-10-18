@@ -13,7 +13,9 @@ from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, Message, CallbackQuery
+from aiogram.types import (
+    InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo, Message, CallbackQuery, Update
+)
 from api.payouts.tokens import list_tokens, get_token
 from api.payouts.price_feed import PriceFeed
 from api.payouts.p2p import P2PClient
@@ -31,9 +33,12 @@ NL = "\n"
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
 router = Router()
+# ensure our router is included in dispatcher so handlers actually receive updates
+dp.include_router(router)
 
 HISTORY = {}
 HF = Path("/tmp/tsar_history.json")
+
 
 def ld():
     if HF.exists():
@@ -43,28 +48,45 @@ def ld():
         except Exception as e:
             log.warning("ld: %s", e)
 
+
 def sv():
     try:
         HF.write_text(J.dumps({str(k): v for k, v in HISTORY.items()}, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception as e:
         log.warning("sv: %s", e)
 
+
 def ah(uid, slug, amt, rub, m, st):
     HISTORY.setdefault(uid, []).append({"ts": time.time(), "slug": slug, "amount": amt, "rub": rub, "method": m, "status": st})
     HISTORY[uid] = HISTORY[uid][-10:]
     sv()
 
+
 def sm(addr):
-    if not addr: return "—"
+    if not addr:
+        return "—"
     return addr[:6] + "…" + addr[-4:]
 
-feeds = {t.slug: PriceFeed(token_master=t.master, token_pool=t.pool, pool_label=t.pool_label, manual_rate=1.0) for t in list_tokens()}
-p2p = P2PClient()
+# Initialize feeds and clients defensively so import/time-of-start doesn't crash
+feeds = {}
+try:
+    feeds = {t.slug: PriceFeed(token_master=t.master, token_pool=t.pool, pool_label=t.pool_label, manual_rate=1.0) for t in list_tokens()}
+except Exception as e:
+    log.warning("feeds init failed: %s", e)
+    feeds = {}
+
+try:
+    p2p = P2PClient()
+except Exception as e:
+    log.warning("p2p init failed: %s", e)
+    p2p = None
+
 log.info("BOT v%s, feeds: %s", BOT_VERSION, list(feeds.keys()))
 
 class W(StatesGroup):
     tok = State()
     amt = State()
+
 
 def mk():
     return ReplyKeyboardMarkup(keyboard=[
@@ -74,47 +96,92 @@ def mk():
         [KeyboardButton(text="♻️ /start")],
     ], resize_keyboard=True)
 
+
 def site_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌐", url=SITE_URL), InlineKeyboardButton(text="🎮", web_app=WebAppInfo(url=GAME_URL))],
         [InlineKeyboardButton(text="🤖", url="https://t.me/BAAL_NIK_BOT"), InlineKeyboardButton(text="💬", url="https://t.me/BAAL_NIK_chat")],
     ])
 
+
 def menu():
     b = [[InlineKeyboardButton(text=t.emoji + " " + t.symbol + " — " + t.name, callback_data="token:" + t.slug)] for t in list_tokens()]
     b.append([InlineKeyboardButton(text="🌐 Сайт", url=SITE_URL)])
     return InlineKeyboardMarkup(inline_keyboard=b)
 
+
+# global errors handler — register to dispatcher
+async def _errors_handler(update: object, exception: Exception) -> bool:
+    # Log full exception and return True to mark as handled
+    try:
+        log.exception("Unhandled exception in update=%s: %s", getattr(update, 'update_id', repr(update)), exception)
+    except Exception:
+        log.exception("Error while logging exception: %s", exception)
+    return True
+
+# register errors handler
+dp.errors.register(_errors_handler)
+
+
+# Start handler — support multiple activation methods and protect internals
 @router.message(CommandStart())
+@router.message(Command("start"))
 @router.message(F.text == "♻️ /start")
 async def start(m: Message):
-    toks = list_tokens()
-    lines = ["👑 <b>ЦАРЬ Обменник</b> <i>v" + BOT_VERSION + "</i>" + NL + NL]
-    lines.append("Продай любой из <b>" + str(len(toks)) + " царей</b> за RUB." + NL)
-    lines.append("Способы: <b>📱 СБП</b> (по телефону) или <b>💳 P2P</b> (карта)." + NL + NL)
-    for i, t in enumerate(toks, 1):
+    try:
+        toks = []
         try:
-            q = await feeds[t.slug].quote(1_000_000)
-            if q.ok:
-                rate_line = t.emoji + " <b>" + t.symbol + "</b> — " + t.name + NL + "   <code>" + sm(t.master) + "</code>" + NL + "   💰 1M = <b>" + f"{q.rub_amount:,.4f}" + " ₽</b>" + NL + "   📥 мин. <b>" + f"{t.min_tsar:,}" + "</b> ЦАРЬ"
-            else:
-                rate_line = t.emoji + " <b>" + t.symbol + "</b> — " + t.name + NL + "   <code>" + sm(t.master) + "</code>" + NL + "   💰 <i>курс недоступен</i>" + NL + "   📥 мин. <b>" + f"{t.min_tsar:,}" + "</b> ЦАРЬ"
+            toks = list_tokens()
+        except Exception as e:
+            log.warning("list_tokens failed in /start: %s", e)
+            toks = []
+
+        lines = ["👑 <b>ЦАРЬ Обменник</b> <i>v" + BOT_VERSION + "</i>" + NL + NL]
+        lines.append("Продай любой из <b>" + str(len(toks)) + " царей</b> за RUB." + NL)
+        lines.append("Способы: <b>📱 СБП</b> (по телефону) или <b>💳 P2P</b> (карта)." + NL + NL)
+        for i, t in enumerate(toks, 1):
+            try:
+                q = None
+                if feeds and t.slug in feeds:
+                    try:
+                        q = await feeds[t.slug].quote(1_000_000)
+                    except Exception:
+                        log.warning("quote failed for %s", t.slug)
+                        q = None
+                if q and getattr(q, 'ok', False):
+                    rate_line = t.emoji + " <b>" + t.symbol + "</b> — " + t.name + NL + "   <code>" + sm(t.master) + "</code>" + NL + "   💰 1M = <b>" + f"{q.rub_amount:,.4f}" + " ₽</b>" + NL + "   📥 мин. <b>" + f"{t.min_tsar:,}" + "</b> ЦАРЬ"
+                else:
+                    rate_line = t.emoji + " <b>" + t.symbol + "</b> — " + t.name + NL + "   <code>" + sm(t.master) + "</code>" + NL + "   💰 <i>курс недоступен</i>" + NL + "   📥 мин. <b>" + f"{t.min_tsar:,}" + "</b> ЦАРЬ"
+            except Exception:
+                rate_line = t.emoji + " <b>" + t.symbol + "</b> — <i>err</i>"
+            lines.append(str(i) + ". " + rate_line + NL)
+        lines.append(NL + "🌐 " + SITE_URL)
+        lines.append(NL + "🎮 " + GAME_URL)
+        lines.append(NL + NL + "👇 Кнопки внизу ↓")
+        await m.answer(NL.join(lines), reply_markup=site_kb())
+        await m.answer("👇 Меню:", reply_markup=mk())
+    except Exception as e:
+        log.exception("start handler failed: %s", e)
+        # fallback minimal reply so the user sees something
+        try:
+            await m.answer("Привет! Произошла внутренняя ошибка — обновите бота или напишите в поддержку.")
         except Exception:
-            rate_line = t.emoji + " <b>" + t.symbol + "</b> — <i>err</i>"
-        lines.append(str(i) + ". " + rate_line + NL)
-    lines.append(NL + "🌐 " + SITE_URL)
-    lines.append(NL + "🎮 " + GAME_URL)
-    lines.append(NL + NL + "👇 Кнопки внизу ↓")
-    await m.answer(NL.join(lines), reply_markup=site_kb())
-    await m.answer("👇 Меню:", reply_markup=mk())
+            # nothing we can do
+            pass
+
 
 @router.message(F.text == "💰 Курс")
 async def rate(m: Message):
     L = ["💱 <b>Курс</b> <i>v" + BOT_VERSION + "</i>" + NL]
     for t in list_tokens():
         try:
-            q = await feeds[t.slug].quote(1_000_000)
-            L.append(t.emoji + " <b>" + t.symbol + "</b>: 1M = <b>" + f"{q.rub_amount:,.4f}" + " ₽</b>" if q.ok else t.emoji + " " + t.symbol + ": —")
+            q = None
+            if feeds and t.slug in feeds:
+                try:
+                    q = await feeds[t.slug].quote(1_000_000)
+                except Exception:
+                    q = None
+            L.append(t.emoji + " <b>" + t.symbol + "</b>: 1M = <b>" + f"{q.rub_amount:,.4f}" + " ₽</b>" if q and getattr(q, 'ok', False) else t.emoji + " " + t.symbol + ": —")
         except Exception:
             L.append(t.emoji + " " + t.symbol + ": err")
     await m.answer(NL.join(L), reply_markup=mk())
@@ -164,8 +231,10 @@ async def cmd_sell(m: Message, command: Command):
         return
     t = list_tokens()[0]
     try:
-        q = await feeds[t.slug].quote(amt)
-        if not q.ok:
+        q = None
+        if feeds and t.slug in feeds:
+            q = await feeds[t.slug].quote(amt)
+        if not q or not getattr(q, 'ok', False):
             await m.answer("⚠️ Курс —", reply_markup=mk())
             return
         rub = q.rub_amount
