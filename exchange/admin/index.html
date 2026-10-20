@@ -1,0 +1,229 @@
+require('dotenv').config();
+const express = require('express');
+const bodyParser = require('body-parser');
+const path = require('path');
+const { Pool } = require('pg');
+
+const app = express();
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, '..', 'admin')));
+
+const memoryStore = {
+  orders: [],
+  deposits: [],
+  payouts: [],
+};
+
+let pool = null;
+if (process.env.DATABASE_URL) {
+  pool = new Pool({ connectionString: process.env.DATABASE_URL });
+}
+
+function nextId(list) {
+  return (list.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1).toString();
+}
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'admin', 'index.html'));
+});
+
+app.get('/health', (req, res) => {
+  res.json({ ok: true, mode: pool ? 'postgres' : 'memory', timestamp: new Date().toISOString() });
+});
+
+async function createOrderInStore(orderData) {
+  const order = {
+    id: nextId(memoryStore.orders),
+    user_id: orderData.userId,
+    network: orderData.network,
+    amount_tokens: Number(orderData.amountTokens),
+    status: 'pending',
+    created_at: new Date().toISOString(),
+  };
+  memoryStore.orders.unshift(order);
+  return order;
+}
+
+async function getOrdersList() {
+  if (pool) {
+    const { rows } = await pool.query('SELECT * FROM orders ORDER BY created_at DESC LIMIT 200');
+    return rows;
+  }
+  return memoryStore.orders;
+}
+
+async function insertDepositRecord(payload) {
+  if (pool) {
+    const result = await pool.query(
+      `INSERT INTO deposits (tx_hash, network, to_address, amount_tokens, created_at) VALUES ($1,$2,$3,$4,now()) RETURNING *`,
+      [payload.txHash, payload.network, payload.toAddress, payload.amountTokens]
+    );
+    return result.rows[0];
+  }
+
+  const deposit = {
+    id: nextId(memoryStore.deposits),
+    tx_hash: payload.txHash,
+    network: payload.network,
+    to_address: payload.toAddress,
+    amount_tokens: Number(payload.amountTokens),
+    created_at: new Date().toISOString(),
+  };
+  memoryStore.deposits.unshift(deposit);
+  return deposit;
+}
+
+async function upsertPayout(orderId, amountRub, provider) {
+  if (pool) {
+    const result = await pool.query(
+      `INSERT INTO payouts (order_id, amount_rub, provider, status, created_at) VALUES ($1,$2,$3,$4,now()) RETURNING *`,
+      [orderId, amountRub, provider, 'completed']
+    );
+    return result.rows[0];
+  }
+
+  const payout = {
+    id: nextId(memoryStore.payouts),
+    order_id: orderId,
+    amount_rub: amountRub,
+    provider,
+    provider_id: `manual_${Date.now()}`,
+    status: 'completed',
+    created_at: new Date().toISOString(),
+  };
+  memoryStore.payouts.unshift(payout);
+  return payout;
+}
+
+app.post('/api/orders', async (req, res) => {
+  const { userId, network, amountTokens, depositTx } = req.body;
+  if (!userId || !network || !amountTokens) {
+    return res.status(400).json({ error: 'userId, network and amountTokens are required' });
+  }
+
+  try {
+    let order;
+    if (pool) {
+      const result = await pool.query(
+        `INSERT INTO orders (user_id, network, amount_tokens, status, created_at) VALUES ($1,$2,$3,$4,now()) RETURNING *`,
+        [userId, network, Number(amountTokens), 'pending']
+      );
+      order = result.rows[0];
+    } else {
+      order = await createOrderInStore({ userId, network, amountTokens });
+    }
+
+    res.status(201).json({ order });
+  } catch (err) {
+    console.error('Failed creating order', err);
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.get('/api/orders/:id', async (req, res) => {
+  try {
+    let order = null;
+    if (pool) {
+      const result = await pool.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
+      order = result.rows[0];
+    } else {
+      order = memoryStore.orders.find((entry) => entry.id.toString() === req.params.id);
+    }
+    if (!order) return res.status(404).json({ error: 'order_not_found' });
+    res.json({ order });
+  } catch (err) {
+    console.error('Failed fetching order', err);
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.get('/api/admin/orders', async (req, res) => {
+  try {
+    const orders = await getOrdersList();
+    res.json({ orders });
+  } catch (err) {
+    console.error('Failed listing orders', err);
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.get('/api/admin/payouts', async (req, res) => {
+  try {
+    if (pool) {
+      const { rows } = await pool.query('SELECT * FROM payouts ORDER BY created_at DESC LIMIT 200');
+      return res.json({ payouts: rows });
+    }
+    res.json({ payouts: memoryStore.payouts });
+  } catch (err) {
+    console.error('Failed listing payouts', err);
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.post('/api/webhook/deposit', async (req, res) => {
+  const { txHash, network, toAddress, amountTokens, userId } = req.body;
+
+  if (!txHash || !network || !toAddress || !amountTokens) {
+    return res.status(400).json({ error: 'txHash, network, toAddress and amountTokens are required' });
+  }
+
+  try {
+    const deposit = await insertDepositRecord({ txHash, network, toAddress, amountTokens, userId });
+
+    let matchedOrder = null;
+    if (pool) {
+      const result = await pool.query(
+        `SELECT * FROM orders WHERE user_id = $1 OR network = $2 ORDER BY created_at DESC LIMIT 1`,
+        [userId || '', network]
+      );
+      matchedOrder = result.rows[0];
+      if (matchedOrder) {
+        await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['paid', matchedOrder.id]);
+      }
+    } else {
+      matchedOrder = memoryStore.orders.find((entry) => (userId && entry.user_id === userId) || entry.network === network) || memoryStore.orders[0];
+      if (matchedOrder) {
+        matchedOrder.status = 'paid';
+      }
+    }
+
+    res.status(200).json({ ok: true, deposit, matchedOrder });
+  } catch (err) {
+    console.error('Webhook failed', err);
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.post('/api/admin/payouts/:id', async (req, res) => {
+  const { id } = req.params;
+  const { amountRub, provider = 'manual' } = req.body || {};
+
+  try {
+    let order;
+    if (pool) {
+      const result = await pool.query('SELECT * FROM orders WHERE id = $1', [id]);
+      order = result.rows[0];
+      if (!order) return res.status(404).json({ error: 'order_not_found' });
+      await pool.query('UPDATE orders SET status = $1 WHERE id = $2', ['payout_complete', order.id]);
+      const payout = await pool.query(
+        `INSERT INTO payouts (order_id, amount_rub, provider, status, created_at) VALUES ($1,$2,$3,$4,now()) RETURNING *`,
+        [order.id, Number(amountRub || order.amount_tokens), provider, 'completed']
+      );
+      return res.json({ ok: true, order, payout: payout.rows[0] });
+    }
+
+    order = memoryStore.orders.find((entry) => entry.id.toString() === id);
+    if (!order) return res.status(404).json({ error: 'order_not_found' });
+    order.status = 'payout_complete';
+    const payout = await upsertPayout(order.id, Number(amountRub || order.amount_tokens), provider);
+    res.json({ ok: true, order, payout });
+  } catch (err) {
+    console.error('Admin payout failed', err);
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Exchange backend listening on ${PORT} (mode: ${pool ? 'postgres' : 'memory'})`);
+});
