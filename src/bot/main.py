@@ -18,14 +18,14 @@ from api.payouts.tokens import list_tokens, get_token
 from api.payouts.price_feed import PriceFeed
 from api.payouts.p2p import P2PClient
 
-BOT_VERSION = "2026-10-10-016"
+BOT_VERSION = "2026-11-01-017"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("tsar.bot")
 if not BOT_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN is required")
 SITE_URL = os.getenv("SITE_URL", "https://tsar-rub-lt87ahb9.agent.mira.tg/").strip()
-GAME_URL = os.getenv("GAME_URL", "https://tsar-game-lt87ahb9.agent.mira.tg/").strip()
+GAME_URL = os.getenv("GAME_URL", "https://tsar-ru-lt87ahb9.agent.mira.tg/").strip()
 NL = "\n"
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -70,13 +70,13 @@ def mk():
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="💰 Курс"), KeyboardButton(text="💸 Продать")],
         [KeyboardButton(text="📊 Калькулятор"), KeyboardButton(text="📜 История")],
-        [KeyboardButton(text="🌐 Сайт"), KeyboardButton(text="🎮 Игра")],
+        [KeyboardButton(text="🌐 Сайт"), KeyboardButton(text="🎮 Царь в Подземелье")],
         [KeyboardButton(text="♻️ /start")],
     ], resize_keyboard=True)
 
 def site_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🌐", url=SITE_URL), InlineKeyboardButton(text="🎮", web_app=WebAppInfo(url=GAME_URL))],
+        [InlineKeyboardButton(text="🌐", url=SITE_URL), InlineKeyboardButton(text="🎮 Царь в Подземелье", url=GAME_URL)],
         [InlineKeyboardButton(text="🤖", url="https://t.me/BAAL_NIK_BOT"), InlineKeyboardButton(text="💬", url="https://t.me/BAAL_NIK_chat")],
     ])
 
@@ -147,9 +147,9 @@ async def hist(m: Message):
 async def sit(m: Message):
     await m.answer("🌐 " + SITE_URL, reply_markup=mk())
 
-@router.message(F.text == "🎮 Игра")
+@router.message(F.text == "🎮 Царь в Подземелье")
 async def game(m: Message):
-    await m.answer("🎮 " + GAME_URL, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🎮", web_app=WebAppInfo(url=GAME_URL))]]))
+    await m.answer("🎮 " + GAME_URL, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🎮 Царь в Подземелье", url=GAME_URL)]]))
 
 @router.message(Command("sell", "withdraw", "quote"))
 async def cmd_sell(m: Message, command: Command):
