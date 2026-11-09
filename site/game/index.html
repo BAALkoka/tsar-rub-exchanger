@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Царь в Подземелье 👑🎮</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{width:100%;height:100%;overflow:hidden;background:#0d0418;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#ffd700}
+  #wrap{position:relative;width:100vw;height:100vh;height:100dvh}
+  canvas{display:block;width:100%;height:100%;touch-action:none}
+  .hud{position:absolute;top:0;left:0;right:0;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;z-index:5}
+  .box{background:rgba(13,4,24,.62);border:1.5px solid rgba(255,215,0,.55);border-radius:12px;padding:6px 12px;backdrop-filter:blur(6px);text-align:center;min-width:74px}
+  .box .l{font-size:9px;letter-spacing:1.5px;color:#c9a961;text-transform:uppercase}
+  .box .v{font-size:20px;font-weight:800;color:#ffd700;text-shadow:0 0 12px rgba(255,215,0,.6)}
+  .screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;background:radial-gradient(circle at 50% 30%,rgba(90,20,120,.75),rgba(13,4,24,.97));z-index:10}
+  .screen.hide{display:none}
+  .title{font-size:clamp(30px,9vw,52px);font-weight:900;letter-spacing:1px;background:linear-gradient(180deg,#fff3c4,#ffd700 45%,#ff8c00);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 0 40px rgba(255,160,0,.35)}
+  .sub{color:#c9a961;font-size:14px;margin:10px 0 4px;line-height:1.6}
+  .btn{margin-top:18px;background:linear-gradient(135deg,#ffd700,#ff8c00);color:#1a0a00;border:none;padding:15px 42px;border-radius:14px;font-size:19px;font-weight:800;letter-spacing:1px;cursor:pointer;box-shadow:0 6px 26px rgba(255,190,60,.45)}
+  .btn:active{transform:scale(.96)}
+  .ctrl{color:#8d7fa8;font-size:12px;margin-top:16px;line-height:1.8}
+  .ctrl b{color:#ffd700}
+  .stat{font-size:15px;color:#c9a961;margin-top:6px}
+  .stat b{color:#4ade80;font-size:19px}
+  #tgbtn{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));background:linear-gradient(135deg,#2ea043,#1f7a33);color:#fff;border:none;padding:13px 30px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;display:none;z-index:11;box-shadow:0 6px 20px rgba(46,160,67,.4)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <div class="hud">
+    <div class="box"><div class="l">Монеты</div><div class="v" id="coins">0</div></div>
+    <div class="box"><div class="l">Рекорд</div><div class="v" id="rec">0</div></div>
+  </div>
+  <div class="screen" id="start">
+    <div class="title">👑 Царь в Подземелье</div>
+    <div class="sub">Беги, собирай монетки и не врежься в камни.<br>Царь не знает страха — знает только монеты.</div>
+    <button class="btn" id="go">▶ НАЧАТЬ</button>
+    <div class="ctrl">◀️ ▶️ стрелки / A D · 👆 свайп · 👆 тап по краю экрана</div>
+  </div>
+  <div class="screen hide" id="over">
+    <div class="title" style="font-size:clamp(26px,7vw,40px)">💀 GAME OVER</div>
+    <div class="stat">Собрано монет: <b id="fin">0</b></div>
+    <div class="stat">Рекорд: <b id="rec2">0</b></div>
+    <div class="sub" id="tgmsg" style="display:none">Счёт отправлен царю 👑</div>
+    <button class="btn" id="again">🔄 ЕЩЁ РАЗ</button>
+  </div>
+  <button id="tgbtn">📤 Отправить счёт царю</button>
+</div>
+<script>
+(function(){
+"use strict";
+var cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+var W=0,H=0,DPR=1;
+function resize(){DPR=Math.min(window.devicePixelRatio||1,2);W=window.innerWidth;H=window.innerHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);}
+resize();window.addEventListener('resize',resize);
+
+var tg=window.Telegram&&window.Telegram.WebApp?window.Telegram.WebApp:null;
+if(tg){try{tg.ready();tg.expand();}catch(e){}}
+var tgBtn=document.getElementById('tgbtn');
+if(tg){tgBtn.style.display='block';tgBtn.addEventListener('click',function(){try{tg.sendData('coins:'+score);}catch(e){}});}
+
+// ---- AUDIO ----
+var ac=null;
+function audio(){if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}if(ac&&ac.state==='suspended'){ac.resume();}}
+function beep(f,dur,type,vol){if(!ac)return;var t=ac.currentTime,o=ac.createOscillator(),g=ac.createGain();o.type=type||'sine';o.frequency.setValueAtTime(f,t);g.gain.setValueAtTime(vol||0.14,t);g.gain.exponentialRampToValueAtTime(0.001,t+dur);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+dur);}
+function sCoin(){beep(1320,0.12,'sine',0.13);setTimeout(function(){beep(1760,0.14,'sine',0.1);},55);}
+function sCrash(){var t=ac?ac.currentTime:0;if(!ac)return;var o=ac.createOscillator(),g=ac.createGain();o.type='sawtooth';o.frequency.setValueAtTime(380,t);o.frequency.exponentialRampToValueAtTime(60,t+0.7);g.gain.setValueAtTime(0.22,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.7);o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+0.75);}
+
+// ---- STATE ----
+var LANES=3, laneX=[0,0,0];
+var running=false,score=0,record=0,speed=0,dist=0,bob=0,shake=0,last=0,spawnZ=0,coins=[],rocks=[],parts=[];
+try{record=parseInt(localStorage.getItem('tsarGameRec')||'0')||0;}catch(e){}
+document.getElementById('rec').textContent=record;
+var LABEL=['I','II','III'];
+var GROUND='#2a1038', LANEW='#3d1a55', LINE='rgba(255,215,0,.20)';
+
+// ---- setup lanes
+function layout(){
+  var margin=Math.max(16,W*0.04);
+  var usable=W-margin*2;
+  var laneW=usable/LANES;
+  laneX[0]=margin+laneW*0.5;
+  laneX[1]=margin+laneW*1.5;
+  laneX[2]=margin+laneW*2.5;
+}
+
+// ---- tsar
+var tsar={lane:1,x:0,y:0,vx:0};
+function drawTsar(x,y,bobT,scale){
+  var s=scale||1;
+  ctx.save();ctx.translate(x,y);
+  // shadow
+  ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(0,0,22*s,7*s,0,0,Math.PI*2);ctx.fill();
+  // cape
+  ctx.fillStyle='#7a1fa2';
+  ctx.beginPath();ctx.moveTo(0,-58*s);ctx.lineTo(-20*s,-14*s);ctx.quadraticCurveTo(0,-6*s,20*s,-14*s);ctx.closePath();ctx.fill();
+  // robe
+  ctx.fillStyle='#5b1480';
+  ctx.beginPath();ctx.moveTo(-15*s,-46*s);ctx.lineTo(15*s,-46*s);ctx.lineTo(19*s,-12*s);ctx.lineTo(-19*s,-12*s);ctx.closePath();ctx.fill();
+  // gold trim
+  ctx.fillStyle='#ffd700';ctx.fillRect(-19*s,-14*s,38*s,4*s);
+  // arms
+  ctx.fillStyle='#5b1480';
+  var swing=Math.sin(bobT)*6*s;
+  ctx.fillRect(-24*s,-44*s+Math.max(0,swing),7*s,24*s);
+  ctx.fillRect(17*s,-44*s+Math.max(0,-swing),7*s,24*s);
+  // head
+  ctx.fillStyle='#f2cfa8';ctx.beginPath();ctx.arc(0,-58*s+bobT*0.6*s,11*s,0,Math.PI*2);ctx.fill();
+  // beard
+  ctx.fillStyle='#f0efe4';ctx.beginPath();ctx.arc(0,-55*s+bobT*0.6*s,5.5*s,0,Math.PI);ctx.fill();
+  // eyes
+  ctx.fillStyle='#2a2a2a';ctx.beginPath();ctx.arc(-4*s,-60*s+bobT*0.6*s,1.6*s,0,Math.PI*2);ctx.arc(4*s,-60*s+bobT*0.6*s,1.6*s,0,Math.PI*2);ctx.fill();
+  // crown
+  ctx.fillStyle='#ffd700';
+  ctx.beginPath();ctx.moveTo(-12*s,-67*s+bobT*0.6*s);ctx.lineTo(-12*s,-73*s+bobT*0.6*s);ctx.lineTo(-6*s,-70*s+bobT*0.6*s);ctx.lineTo(0,-77*s+bobT*0.6*s);ctx.lineTo(6*s,-70*s+bobT*0.6*s);ctx.lineTo(12*s,-73*s+bobT*0.6*s);ctx.lineTo(12*s,-67*s+bobT*0.6*s);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#ff0066';ctx.beginPath();ctx.arc(0,-70*s+bobT*0.6*s,2.2*s,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+}
+
+// ---- world gen
+function reset(){
+  coins=[];rocks=[];parts=[];score=0;dist=0;speed=0.16;tsar.lane=1;tsar.x=laneX[1];bob=0;shake=0;spawnZ=-60;
+  layout();
+  for(var i=0;i<40;i++) spawnChunk();
+}
+function spawnChunk(){
+  spawnZ-=34;
+  var r=Math.random();
+  if(r<0.34){
+    var l=Math.floor(Math.random()*LANES);
+    var n=2+Math.floor(Math.random()*3);
+    for(var i=0;i<n;i++){coins.push({lane:l,x:laneX[l],y:spawnZ-i*26,got:false,ph:Math.random()*6.28});}
+  } else if(r<0.62){
+    var l2=Math.floor(Math.random()*LANES);
+    rocks.push({lane:l2,x:laneX[l2],y:spawnZ});
+  } else if(r<0.78){
+    var l3=Math.floor(Math.random()*LANES);
+    coins.push({lane:l3,x:laneX[l3],y:spawnZ-14,got:false,ph:0});
+    coins.push({lane:l3,x:laneX[l3],y:spawnZ-40,got:false,ph:1});
+  }
+}
+
+// ---- input
+function setLane(i){if(i<0||i>LANES-1)return;tsar.lane=i;}
+window.addEventListener('keydown',function(e){
+  var k=e.key;
+  if(k==='ArrowLeft'||k==='a'||k==='A')setLane(tsar.lane-1);
+  if(k==='ArrowRight'||k==='d'||k==='D')setLane(tsar.lane+1);
+  if(k===' '||k==='Enter'){ if(!running) startGame(); }
+});
+var tSx=0,tSy=0;
+cv.addEventListener('touchstart',function(e){tSx=e.touches[0].clientX;tSy=e.touches[0].clientY;},{passive:true});
+cv.addEventListener('touchend',function(e){
+  var dx=e.changedTouches[0].clientX-tSx, dy=e.changedTouches[0].clientY-tSy;
+  if(Math.abs(dx)>28&&Math.abs(dx)>Math.abs(dy)) setLane(tsar.lane+(dx>0?1:-1));
+  else if(Math.abs(dy)>40) startGame();
+},{passive:true});
+cv.addEventListener('click',function(e){
+  if(!running){startGame();return;}
+  var x=e.clientX;
+  if(x<W*0.38) setLane(tsar.lane-1); else if(x>W*0.62) setLane(tsar.lane+1);
+});
+
+// ---- game flow
+function startGame(){
+  audio();
+  document.getElementById('start').classList.add('hide');
+  document.getElementById('over').classList.add('hide');
+  reset();running=true;last=0;
+}
+function gameOver(){
+  running=false;sCrash();shake=14;
+  document.getElementById('fin').textContent=score;
+  document.getElementById('rec2').textContent=record;
+  if(score>record){record=score;try{localStorage.setItem('tsarGameRec',String(record));}catch(e){}}
+  document.getElementById('rec').textContent=record;
+  var msg=document.getElementById('tgmsg');
+  if(tg){msg.style.display='block';try{tg.sendData('coins:'+score);}catch(e){}}
+  setTimeout(function(){document.getElementById('over').classList.remove('hide');},520);
+}
+document.getElementById('go').addEventListener('click',startGame);
+document.getElementById('again').addEventListener('click',startGame);
+
+// ---- render
+function drawBg(){
+  var g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#1b0733');g.addColorStop(.55,'#0d0418');g.addColorStop(1,'#1a0530');
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  // stars
+  ctx.fillStyle='rgba(255,255,255,.35)';
+  for(var i=0;i<40;i++){
+    var sx=(i*97%W), sy=((i*53+dist*0.15)%H), s=(i%3===0?1.6:1);
+    ctx.fillRect(sx,sy,s,s);
+  }
+  // distant pillars
+  ctx.fillStyle='rgba(255,215,0,.05)';
+  for(var j=0;j<7;j++){
+    var px=(j*W/6+((dist*0.25)%(W/6)))-W/12;
+    ctx.fillRect(px,0,W/22,H);
+  }
+  // road
+  var rh=H*0.66, ry=H*0.30;
+  ctx.fillStyle=GROUND;ctx.fillRect(0,ry,W,rh);
+  ctx.fillStyle=LANEW;
+  var persp=0.55;
+  for(var k=0;k<LANES;k++){ }
+  // lane glow stripes
+  ctx.strokeStyle=LINE;ctx.lineWidth=2;
+  var off=(dist*1.0)%54;
+  for(var d=0;d<14;d++){
+    var y=ry+off+d*54;
+    if(y>ry+rh)break;
+    var wdt=1;
+    ctx.beginPath();ctx.moveTo(laneX[0]-laneStep()/2,y);ctx.lineTo(laneX[0]-laneStep()/2,y+22);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(laneX[1]-laneStep()/2,y);ctx.lineTo(laneX[1]-laneStep()/2,y+22);ctx.stroke();
+  }
+  // side walls
+  ctx.fillStyle='rgba(255,215,0,.07)';ctx.fillRect(0,ry-6,W,6);
+  ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(0,ry+rh,W,8);
+}
+function laneStep(){return (W-Math.max(16,W*0.04)*2)/LANES;}
+
+function drawCoin(c){
+  var y=H*0.30+(c.y-dist)*(H*0.66/220);
+  if(y<H*0.28||y>H*0.99)return;
+  var sw=Math.abs(Math.sin(c.ph*2+dist*0.06));
+  var r=11*Math.max(0.25,sw);
+  ctx.save();ctx.translate(c.x,y);
+  ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(0,6,10,4,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#ffd700';ctx.beginPath();ctx.ellipse(0,0,Math.max(2,r),11,0,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#ff8c00';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.restore();
+}
+function drawRock(rk){
+  var y=H*0.30+(rk.y-dist)*(H*0.66/220);
+  if(y<H*0.30||y>H*0.99)return;
+  ctx.save();ctx.translate(rk.x,y);
+  ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(0,4,15,6,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#4b4b5a';ctx.beginPath();
+  ctx.moveTo(-14,0);ctx.lineTo(-7,-14);ctx.lineTo(6,-16);ctx.lineTo(14,-3);ctx.lineTo(6,3);ctx.lineTo(-7,3);ctx.closePath();ctx.fill();
+  ctx.fillStyle='#63637a';ctx.beginPath();ctx.moveTo(-7,-14);ctx.lineTo(6,-16);ctx.lineTo(2,-6);ctx.closePath();ctx.fill();
+  ctx.restore();
+}
+function drawParticles(){
+  for(var i=0;i<parts.length;i++){
+    var p=parts[i];
+    ctx.fillStyle='rgba(255,215,0,'+p.a+')';
+    ctx.fillRect(p.x,p.y,p.s,p.s);
+  }
+}
+function burst(x,y){
+  for(var i=0;i<10;i++)parts.push({x:x,y:y,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4-1,life:1,a:1,s:2+Math.random()*3});
+}
+
+function loop(ts){
+  requestAnimationFrame(loop);
+  if(!last)last=ts;
+  var dt=Math.min(0.05,(ts-last)/1000);last=ts;
+  if(running){
+    dist+=speed*dt*60*(1+dist/1400);
+    speed=Math.min(0.55,speed+dt*0.012);
+    bob+=dt*11;
+    // tsar move
+    var tx=laneX[tsar.lane];
+    tsar.x+=(tx-tsar.x)*Math.min(1,dt*11);
+    // coins
+    for(var i=0;i<coins.length;i++){
+      var c=coins[i]; if(c.got)continue;
+      var cy=H*0.30+(c.y-dist)*(H*0.66/220);
+      if(Math.abs(c.x-tsar.x)<26&&Math.abs(cy-(H*0.62))<34){
+        c.got=true;score++;
+        document.getElementById('coins').textContent=score;
+        sCoin();burst(c.x,cy);
+      }
+    }
+    // rocks
+    for(var j=0;j<rocks.length;j++){
+      var rk=rocks[j];
+      var ry=H*0.30+(rk.y-dist)*(H*0.66/220);
+      if(Math.abs(rk.x-tsar.x)<28&&Math.abs(ry-(H*0.60))<28){ gameOver(); }
+    }
+    // cull
+    coins=coins.filter(function(c){return c.y>dist-420;});
+    rocks=rocks.filter(function(r){return r.y>dist-420;});
+    while(spawnZ>dist-520) spawnChunk();
+  }
+  // particles
+  for(var k=parts.length-1;k>=0;k--){var p=parts[k];p.x+=p.vx;p.y+=p.vy;p.vy+=0.12;p.life-=0.03;p.a=p.life;if(p.life<=0)parts.splice(k,1);}
+  // draw
+  ctx.save();
+  if(shake>0){shake-=1;ctx.translate((Math.random()-0.5)*shake,(Math.random()-0.5)*shake);}
+  drawBg();
+  for(var m=0;m<rocks.length;m++) drawRock(rocks[m]);
+  for(var n=0;n<coins.length;n++) if(!coins[n].got) drawCoin(coins[n]);
+  drawParticles();
+  drawTsar(tsar.x,H*0.60, running?bob:0, Math.max(0.85,Math.min(1.5,W/420)));
+  ctx.restore();
+  // label lane markers bottom
+  ctx.fillStyle='rgba(255,215,0,.25)';ctx.font='bold 11px sans-serif';ctx.textAlign='center';
+  for(var q=0;q<LANES;q++){ctx.fillText(LABEL[q],laneX[q],H-10);}
+  ctx.textAlign='left';
+}
+layout();reset();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
