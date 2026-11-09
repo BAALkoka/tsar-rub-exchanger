@@ -18,8 +18,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "src"))
+for _p in (ROOT, ROOT / "src", ROOT.parent):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.client.default import DefaultBotProperties
@@ -40,12 +41,27 @@ from aiogram.types import (
 
 import importlib.util
 
-SRC = ROOT / "src" / "api" / "payouts"
+# Каталог с модулями api.payouts — ищем в нескольких местах,
+# чтобы бот одинаково запускался из корня, из src/ и как модуль bot.main.
+_CANDIDATES = [
+    ROOT / "src" / "api" / "payouts",
+    ROOT.parent / "api" / "payouts",
+    ROOT.parent / "src" / "api" / "payouts",
+    Path("/app/api/payouts"),
+    Path("/app/src/api/payouts"),
+]
+
+
+def _payouts_dir() -> Path:
+    for c in _CANDIDATES:
+        if (c / "tokens.py").exists():
+            return c
+    raise RuntimeError("каталог api/payouts не найден: " + ", ".join(str(c) for c in _CANDIDATES))
 
 
 def _load(name: str):
     """Загружаем модуль напрямую по файлу — без тяжёлого __init__ пакета."""
-    path = SRC / f"{name}.py"
+    path = _payouts_dir() / f"{name}.py"
     spec = importlib.util.spec_from_file_location(f"tsar_{name}", path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"cannot load {path}")
