@@ -1,4 +1,4 @@
-"""Telegram-бот обменника ЦАРЬ → RUB. v2026-11-09-025 (финал).
+"""Telegram-бот обменника ЦАРЬ → RUB. v2026-11-12-027 (/start: include_router в src/bot/main.py).
 
 Что исправлено:
 - /start работает: единый вход, выбор сети (TON 3 царя / BSC 4 царя), затем токена.
@@ -587,7 +587,11 @@ async def cmd_help(message: Message) -> None:
 # ---------------- запуск ----------------
 async def main() -> None:
     load_players()
+    # КРИТИЧНО: без include_router ни один хендлер не зарегистрирован,
+    # и бот молча не отвечает на /start и любые команды.
+    dp.include_router(router)
     log.info("BOT v%s started, tokens: %s", BOT_VERSION, [t.slug for t in list_tokens()])
+    log.info("router attached to dispatcher, handlers registered")
     await dp.start_polling(bot)
 
 
