@@ -234,6 +234,9 @@ class PayoutService:
             return "+7" + p[1:]
         if p.startswith("7") and len(p) == 11 and p[1:].isdigit():
             return "+" + p
+        # 10 цифр без префикса: 9001234567 -> +79001234567
+        if len(p) == 10 and p.isdigit():
+            return "+7" + p
         return None
 
     def _err(self, tsar_amount, recipient, amount_rub, error, stages=None):
