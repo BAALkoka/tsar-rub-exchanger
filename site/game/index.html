@@ -23,7 +23,8 @@
   .ctrl b{color:#ffd700}
   .stat{font-size:15px;color:#c9a961;margin-top:6px}
   .stat b{color:#4ade80;font-size:19px}
-  #tgbtn{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));background:linear-gradient(135deg,#2ea043,#1f7a33);color:#fff;border:none;padding:13px 30px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;display:none;z-index:11;box-shadow:0 6px 20px rgba(46,160,67,.4)}
+  #wdbtn{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(72px + env(safe-area-inset-bottom));background:linear-gradient(135deg,#c9a227,#8a6d0f);color:#fffaf0;border:none;padding:12px 30px;border-radius:12px;font-size:16px;font-weight:800;
+#tgbtn{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom));background:linear-gradient(135deg,#2ea043,#1f7a33);color:#fff;border:none;padding:13px 30px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;display:none;z-index:11;box-shadow:0 6px 20px rgba(46,160,67,.4)}
 </style>
 </head>
 <body>
@@ -44,9 +45,11 @@
     <div class="stat">Собрано монет: <b id="fin">0</b></div>
     <div class="stat">Рекорд: <b id="rec2">0</b></div>
     <div class="sub" id="tgmsg" style="display:none">Счёт отправлен царю 👑</div>
+    <div class="stat">Накоплено всего: <b id="tot">0</b></div>
     <button class="btn" id="again">🔄 ЕЩЁ РАЗ</button>
   </div>
   <button id="tgbtn">📤 Отправить счёт царю</button>
+  <button id="wdbtn">💸 Вывести монеты</button>
 </div>
 <script>
 (function(){
@@ -58,8 +61,17 @@ resize();window.addEventListener('resize',resize);
 
 var tg=window.Telegram&&window.Telegram.WebApp?window.Telegram.WebApp:null;
 if(tg){try{tg.ready();tg.expand();}catch(e){}}
+// ---- накопленный счёт: не обнуляется между забегами ----
+var total=0;
+try{total=parseInt(localStorage.getItem('tsarGameTotal')||'0',10)||0;}catch(e){}
+function saveTotal(){try{localStorage.setItem('tsarGameTotal',String(total));}catch(e){}}
+function paintTotal(){var el=document.getElementById('tot');if(el)el.textContent=total;}
+paintTotal();
 var tgBtn=document.getElementById('tgbtn');
-if(tg){tgBtn.style.display='block';tgBtn.addEventListener('click',function(){try{tg.sendData('coins:'+score);}catch(e){}});}
+var wdBtn=document.getElementById('wdbtn');
+if(tg){tgBtn.style.display='block';wdBtn.style.display='block';
+  tgBtn.addEventListener('click',function(){try{tg.sendData('coins:'+total);}catch(e){}});
+  wdBtn.addEventListener('click',function(){try{tg.sendData('withdraw:'+total);}catch(e){}});}
 
 // ---- AUDIO ----
 var ac=null;
@@ -176,8 +188,10 @@ function gameOver(){
   document.getElementById('rec2').textContent=record;
   if(score>record){record=score;try{localStorage.setItem('tsarGameRec',String(record));}catch(e){}}
   document.getElementById('rec').textContent=record;
+  // монеты накапливаются: счёт не обнуляется, баланс растёт от забега к забегу
+  total+=score;saveTotal();paintTotal();
   var msg=document.getElementById('tgmsg');
-  if(tg){msg.style.display='block';try{tg.sendData('coins:'+score);}catch(e){}}
+  if(tg){msg.style.display='block';try{tg.sendData('coins:'+total);}catch(e){}}
   setTimeout(function(){document.getElementById('over').classList.remove('hide');},520);
 }
 document.getElementById('go').addEventListener('click',startGame);
