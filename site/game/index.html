@@ -13,7 +13,13 @@
   .box{background:rgba(13,4,24,.62);border:1.5px solid rgba(255,215,0,.55);border-radius:12px;padding:6px 12px;backdrop-filter:blur(6px);text-align:center;min-width:74px}
   .box .l{font-size:9px;letter-spacing:1.5px;color:#c9a961;text-transform:uppercase}
   .box .v{font-size:20px;font-weight:800;color:#ffd700;text-shadow:0 0 12px rgba(255,215,0,.6)}
-  .screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;background:radial-gradient(circle at 50% 30%,rgba(90,20,120,.75),rgba(13,4,24,.97));z-index:10}
+  .hero{width:min(86vw,420px);aspect-ratio:16/9;border-radius:16px;object-fit:cover;
+  display:block;margin:0 auto 14px;border:1.5px solid rgba(255,215,0,.55);
+  box-shadow:0 10px 40px rgba(0,0,0,.6),0 0 30px rgba(255,215,0,.18);
+  animation:heroIn .7s ease-out}
+@keyframes heroIn{from{opacity:0;transform:scale(.94) translateY(10px)}to{opacity:1;transform:none}}
+@media (max-height:620px){.hero{width:min(70vw,300px);margin-bottom:8px}}
+.screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;background:radial-gradient(circle at 50% 30%,rgba(90,20,120,.75),rgba(13,4,24,.97));z-index:10}
   .screen.hide{display:none}
   .title{font-size:clamp(30px,9vw,52px);font-weight:900;letter-spacing:1px;background:linear-gradient(180deg,#fff3c4,#ffd700 45%,#ff8c00);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 0 40px rgba(255,160,0,.35)}
   .sub{color:#c9a961;font-size:14px;margin:10px 0 4px;line-height:1.6}
@@ -35,12 +41,14 @@
     <div class="box"><div class="l">Рекорд</div><div class="v" id="rec">0</div></div>
   </div>
   <div class="screen" id="start">
+    <img class="hero" id="hero" src="tsar_dungeon.png" alt="Царь в Подземелье" loading="eager" decoding="async">
     <div class="title">👑 Царь в Подземелье</div>
     <div class="sub">Беги, собирай монетки и не врежься в камни.<br>Царь не знает страха — знает только монеты.</div>
     <button class="btn" id="go">▶ НАЧАТЬ</button>
     <div class="ctrl">◀️ ▶️ стрелки / A D · 👆 свайп · 👆 тап по краю экрана</div>
   </div>
   <div class="screen hide" id="over">
+    <img class="hero" id="hero2" src="tsar_dungeon.png" alt="Царь в Подземелье" style="width:min(64vw,300px)" loading="lazy" decoding="async">
     <div class="title" style="font-size:clamp(26px,7vw,40px)">💀 GAME OVER</div>
     <div class="stat">Собрано монет: <b id="fin">0</b></div>
     <div class="stat">Рекорд: <b id="rec2">0</b></div>
