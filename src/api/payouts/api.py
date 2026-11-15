@@ -1,24 +1,19 @@
 """FastAPI приложение: /v1/quote, /v1/payouts, /v1/pools, /ton/notify, /health."""
 from __future__ import annotations
-import asyncio
-import logging
-import os
-from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Request
+import logging
+
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from .config import (
     USD_RUB_FALLBACK,
-    USDT_TREASURY_ADDRESS,
-    SUPPORT_HANDLE,
-    ADMIN_CHAT_ID,
 )
-from .tokens import list_tokens, get_token, find_by_master, short_master, TOKENS
-from .price_feed import PriceFeed
-from .p2p import P2PClient, P2PError
-from .service import PayoutService
 from .models import PayoutMethod
+from .p2p import P2PClient
+from .price_feed import PriceFeed
+from .service import PayoutService
+from .tokens import find_by_master, get_token, list_tokens, short_master
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +52,7 @@ class QuoteResponse(BaseModel):
     rub_amount: float
     usd_rub: float
     source: str
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @app.get("/health")
@@ -123,11 +118,11 @@ class PayoutRequest(BaseModel):
 
 class PayoutResponse(BaseModel):
     ok: bool
-    payout_id: Optional[str] = None
+    payout_id: str | None = None
     amount_rub: float = 0
-    p2p_partner: Optional[str] = None
+    p2p_partner: str | None = None
     p2p_price: float = 0
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @app.post("/v1/payouts", response_model=PayoutResponse)

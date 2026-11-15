@@ -10,13 +10,12 @@ Mock-режим: возвращает фейковый tx_hash без подпи
 Боевой режим: реальная jetton-транзакция через ton-core.
 """
 from __future__ import annotations
-import asyncio
+
 import logging
 import os
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Optional
 
 from .config import TSAR_DECIMALS, TSAR_MASTER, TSAR_TREASURY_ADDRESS
 
@@ -36,7 +35,7 @@ class TonTx:
     jetton: str            # master jetton
     amount: float          # в jetton-единицах
     amount_raw: int        # в on-chain units (с учётом decimals)
-    lt: Optional[int] = None
+    lt: int | None = None
     source: str = "mock"   # mock | ton-core | tonweb
     created_at: float = 0.0
 
@@ -51,12 +50,12 @@ class TonPayout:
     def __init__(
         self,
         *,
-        mnemonic: Optional[str] = None,
+        mnemonic: str | None = None,
         jetton_master: str = TSAR_MASTER,
         treasury: str = TSAR_TREASURY_ADDRESS,
         decimals: int = TSAR_DECIMALS,
         rpc_url: str = "https://toncenter.com/api/v2/jsonRPC",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         timeout_sec: float = 15.0,
     ):
         self.mnemonic = (
@@ -71,7 +70,7 @@ class TonPayout:
         self.rpc_url = rpc_url
         self.api_key = api_key or os.getenv("TONAPI_TOKEN")
         self.timeout = timeout_sec
-        self._wallet_address: Optional[str] = None
+        self._wallet_address: str | None = None
 
     @property
     def is_configured(self) -> bool:
@@ -86,8 +85,9 @@ class TonPayout:
             self._wallet_address = "EQDrLq-X6jKZ3D4MjBQK2c6dAR3wK1D7c7-3X-4Y-5Z-6A-7B"
             return self._wallet_address
         try:
-            from ton_core import Wallet  # type: ignore
-            w = Wallet.from_mnemonic(mnemonics=self.mnemonic.split())
+            from ton_core import Wallet
+            mnemonic = self.mnemonic or ""
+            w = Wallet.from_mnemonic(mnemonics=mnemonic.split())
             self._wallet_address = w.address.to_str()
             return self._wallet_address
         except ImportError:
@@ -132,8 +132,9 @@ class TonPayout:
 
         # === БОЕВОЙ РЕЖИМ через ton-core ===
         try:
-            from ton_core import Wallet, Address  # type: ignore
-            w = Wallet.from_mnemonic(mnemonics=self.mnemonic.split())
+            from ton_core import Address, Wallet
+            mnemonic = self.mnemonic or ""
+            w = Wallet.from_mnemonic(mnemonics=mnemonic.split())
             jetton_wallet = w.create_wallet(
                 jetton_master=Address(self.jetton_master),
             )
@@ -153,8 +154,8 @@ class TonPayout:
                 source="ton-core",
                 created_at=now,
             )
-        except ImportError:
-            raise TonPayoutError("ton-core не установлен. pip install ton-core")
+        except ImportError as e:
+            raise TonPayoutError("ton-core не установлен. pip install ton-core") from e
         except Exception as e:
             raise TonPayoutError(f"TON transfer failed: {e}") from e
 

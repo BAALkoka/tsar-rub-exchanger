@@ -5,14 +5,13 @@
   кол_царь    = руб_за_монету / цена_1_царь_руб
 """
 from __future__ import annotations
-import json
+
 import logging
-from typing import Optional
 from dataclasses import dataclass
 
 import httpx
 
-from .tokens import get_token, list_by_network
+from .tokens import get_token
 
 log = logging.getLogger("tsar.coins")
 
@@ -89,12 +88,12 @@ class AllThreeTsarsResult:
             f"Всего: <b>{self.total_rub:,.2f} ₽</b>\n",
             "<b>━━━━━ 1 МОНЕТА 21 г ━━━━━</b>",
         ]
-        for slug, (name, per_coin, per_total) in self.results.items():
+        for name, per_coin, _per_total in self.results.values():
             lines.append(f"{name}")
             lines.append(f"  → <b>{per_coin:,.0f} ЦАРЬ</b> за монету")
         lines.append("")
         lines.append("<b>━━━━━ 8 МОНЕТ (×8) ━━━━━</b>")
-        for slug, (name, per_coin, per_total) in self.results.items():
+        for name, _per_coin, per_total in self.results.values():
             lines.append(f"{name}")
             lines.append(f"  → <b>{per_total:,.0f} ЦАРЬ</b> всего")
         lines.append("")

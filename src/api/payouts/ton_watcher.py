@@ -8,15 +8,16 @@ USDT_TREASURY_ADDRESS — watcher определяет, КАКОЙ ИМЕННО 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Optional
 
 import httpx
 
 from .config import USDT_TREASURY_ADDRESS
-from .tokens import find_by_master, TokenMeta, short_master
+from .tokens import TokenMeta, find_by_master, short_master
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class IncomingTransfer:
     decimals: int
     sender: str
     timestamp: int
-    token: Optional[TokenMeta] = None   # резолвится автоматически
+    token: TokenMeta | None = None   # резолвится автоматически
 
 
 class TonWatcher:
@@ -48,19 +49,19 @@ class TonWatcher:
 
     def __init__(
         self,
-        wallet_address: Optional[str] = None,
+        wallet_address: str | None = None,
         *,
         poll_interval_sec: float = 15.0,
-        tonapi_token: Optional[str] = None,
-        on_transfer: Optional[Callable[[IncomingTransfer], Awaitable[None]]] = None,
+        tonapi_token: str | None = None,
+        on_transfer: Callable[[IncomingTransfer], Awaitable[None]] | None = None,
     ):
         self.wallet = wallet_address or USDT_TREASURY_ADDRESS
         self.poll_interval = poll_interval_sec
         self.tonapi_token = tonapi_token or os.environ.get("TONAPI_TOKEN")
         self.on_transfer = on_transfer
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
         self._seen_hashes: set[str] = set()
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         self._stop = asyncio.Event()
 
     def _headers(self) -> dict:
@@ -142,10 +143,8 @@ class TonWatcher:
                             logger.exception("on_transfer handler failed: %s", e)
             except Exception as e:
                 logger.exception("TonWatcher tick failed: %s", e)
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._stop.wait(), timeout=self.poll_interval)
-            except asyncio.TimeoutError:
-                pass
         return 0
 
     def start(self) -> asyncio.Task:
@@ -158,15 +157,13 @@ class TonWatcher:
     async def stop(self) -> None:
         self._stop.set()
         if self._task:
-            try:
+            with contextlib.suppress(Exception):
                 await self._task
-            except Exception:
-                pass
         if self._client:
             await self._client.aclose()
 
 
-def detect_token_from_event(event: dict) -> Optional[TokenMeta]:
+def detect_token_from_event(event: dict) -> TokenMeta | None:
     """Утилита: найти токен по событию от webhook / ручного вызова."""
     for action in event.get("actions", []):
         if action.get("type") != "JettonTransfer":

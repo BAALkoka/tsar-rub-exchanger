@@ -1,19 +1,19 @@
 """Адаптер: бизнес-логика payouts → реальная выплата через Тинькофф."""
 from __future__ import annotations
+
 import logging
 import os
 import sys
-from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from integrations.sbp.tinkoff import TinkoffSBPClient, PayoutResult
+from integrations.sbp.tinkoff import PayoutResult, TinkoffSBPClient
 
 logger = logging.getLogger(__name__)
 
 
 class SBPBridge:
-    def __init__(self, tinkoff: Optional[TinkoffSBPClient] = None):
+    def __init__(self, tinkoff: TinkoffSBPClient | None = None):
         self.tinkoff = tinkoff
 
     async def payout_rub(self, *, amount_rub, recipient, order_id, description="ЦАРЬ → RUB") -> PayoutResult:

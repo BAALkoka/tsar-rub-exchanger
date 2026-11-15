@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Optional
 
 import httpx
 
@@ -22,7 +21,7 @@ class TonPoolFinder:
     TONAPI = "https://tonapi.io/v2"
     DEDUST = "https://api.dedust.io/v2"
 
-    def __init__(self, wallet_address: str, *, tonapi_token: Optional[str] = None):
+    def __init__(self, wallet_address: str, *, tonapi_token: str | None = None):
         self.wallet = wallet_address
         self.tonapi_token = tonapi_token or os.environ.get("TONAPI_TOKEN")
         self._client = httpx.AsyncClient(timeout=10.0)
@@ -38,7 +37,7 @@ class TonPoolFinder:
         r.raise_for_status()
         return r.json().get("jettons", [])
 
-    async def find_dedust_pool(self, jetton_address: str) -> Optional[dict]:
+    async def find_dedust_pool(self, jetton_address: str) -> dict | None:
         """Ищет пул ЦАРЬ-жетон/TON на DeDust."""
         r = await self._client.get(f"{self.DEDUST}/pools")
         r.raise_for_status()

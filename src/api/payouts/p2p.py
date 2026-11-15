@@ -14,7 +14,6 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 import httpx
 
@@ -61,7 +60,7 @@ class P2POrder:
 class P2PClient:
     """Клиент WalletBot P2P Market с трёхуровневым fallback."""
 
-    def __init__(self, *, timeout_sec: float = 10.0, api_key: Optional[str] = None):
+    def __init__(self, *, timeout_sec: float = 10.0, api_key: str | None = None):
         self.base_url = P2P_API_URL.rstrip("/")
         self.path = P2P_PATH
         self.api_key = (api_key if api_key is not None else P2P_API_KEY or os.getenv("P2P_API_KEY") or "").strip() or None
@@ -229,7 +228,7 @@ class P2PClient:
             ))
         return ads
 
-    async def best_buy_ad(self, *, fiat: str = "RUB") -> Optional[P2PAd]:
+    async def best_buy_ad(self, *, fiat: str = "RUB") -> P2PAd | None:
         """Возвращает лучшее объявление (минимальная цена ₽/USDT)."""
         ads = await self.get_buy_ads(fiat=fiat, side="BUY")
         if not ads:
@@ -244,7 +243,7 @@ class P2PClient:
         ad_id: str,
         usdt_amount: float,
         fiat: str = "RUB",
-        idempotency_key: Optional[str] = None,
+        idempotency_key: str | None = None,
     ) -> P2POrder:
         """Создаёт сделку P2P-продажи USDT за RUB.
 

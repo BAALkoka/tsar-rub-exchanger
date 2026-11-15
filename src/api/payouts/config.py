@@ -1,5 +1,6 @@
 """Конфигурация off-ramp сервиса ЦАРЬ → RUB → карта."""
 from __future__ import annotations
+
 import os
 
 # === MASTER-адреса ===

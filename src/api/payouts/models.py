@@ -1,18 +1,19 @@
 """Pydantic-модели для выплат."""
 from __future__ import annotations
+
 from datetime import datetime
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
+
 from pydantic import BaseModel, Field
 
 
-class PayoutMethod(str, Enum):
+class PayoutMethod(StrEnum):
     SBP = "sbp"
     CARD_RU = "card_ru"
     CARD_FOREIGN = "card_foreign"
 
 
-class PayoutStatus(str, Enum):
+class PayoutStatus(StrEnum):
     PENDING = "pending"
     CREATED = "created"
     KYC_REQUIRED = "kyc_required"
@@ -32,8 +33,8 @@ class Payout(BaseModel):
     method: PayoutMethod = PayoutMethod.SBP
     recipient: str = Field("")
     status: PayoutStatus = PayoutStatus.PENDING
-    external_id: Optional[str] = None
-    error: Optional[str] = None
+    external_id: str | None = None
+    error: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -41,6 +42,6 @@ class Payout(BaseModel):
 class PayoutResult(BaseModel):
     ok: bool
     payout: Payout
-    error: Optional[str] = None
+    error: str | None = None
     stages: list[str] = Field(default_factory=list)
-    p2p_ad: Optional[dict] = None
+    p2p_ad: dict | None = None

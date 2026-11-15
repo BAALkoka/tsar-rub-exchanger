@@ -1,10 +1,12 @@
 """СБП + переводы на карту. 9 банков СБП + 8 банков CARD + mock."""
 from __future__ import annotations
+
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Optional
+
 import httpx
+
 from .config import SBP_API_KEY, SBP_BASE_URL, SBP_MERCHANT_ID, SBP_PROVIDER
 
 logger = logging.getLogger(__name__)
@@ -78,7 +80,9 @@ class SbpClient:
     def __init__(self, config: SbpConfig):
         self.config = config
         self._seen_ids: set[str] = set()
-        self._client: Optional[httpx.AsyncClient] = None
+        # idempotency_key -> исходный результат выплаты (для возврата при дубле)
+        self._results_by_id: dict[str, SbpResult] = {}
+        self._client: httpx.AsyncClient | None = None
 
     async def _http(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -95,7 +99,7 @@ class SbpClient:
             self._client = None
 
     @classmethod
-    def from_env(cls) -> "SbpClient":
+    def from_env(cls) -> SbpClient:
         return cls(SbpConfig(
             provider=SBP_PROVIDER, merchant_id=SBP_MERCHANT_ID,
             api_key=SBP_API_KEY, base_url=SBP_BASE_URL,
@@ -109,6 +113,15 @@ class SbpClient:
 
     async def payout(self, *, amount_rub, phone, idempotency_key, extra=None) -> SbpResult:
         if idempotency_key in self._seen_ids:
+            # Возвращаем ИСХОДНЫЙ external_id первой выплаты, а не сам ключ:
+            # по нему клиент может найти операцию у провайдера.
+            prev = self._results_by_id.get(idempotency_key)
+            if prev is not None:
+                return SbpResult(
+                    external_id=prev.external_id, status="duplicate",
+                    provider=prev.provider, amount_rub=prev.amount_rub,
+                    phone=prev.phone, raw={"reason": "duplicate", "original": prev.raw},
+                )
             return SbpResult(
                 external_id=idempotency_key, status="duplicate",
                 provider=self.config.provider, amount_rub=amount_rub,
@@ -117,7 +130,9 @@ class SbpClient:
         self._seen_ids.add(idempotency_key)
 
         if self.config.provider == "mock":
-            return await self._mock_send(amount_rub, phone, idempotency_key)
+            result = await self._mock_send(amount_rub, phone, idempotency_key)
+            self._results_by_id[idempotency_key] = result
+            return result
 
         if self.config.provider not in SBP_PROVIDERS:
             raise SbpError(f"Unknown SBP provider: {self.config.provider}")
@@ -135,12 +150,14 @@ class SbpClient:
                 )
                 r.raise_for_status()
                 d = r.json()
-                return SbpResult(
-                    external_id=str(d.get("external_id") or d.get("id") or d.get("PaymentId") or idempotency_key),
+                result = SbpResult(
+                    external_id=str(d.get("external_id") or d.get("id") or d.get("payment_id") or idempotency_key),
                     status=str(d.get("status", "pending")),
                     provider=self.config.provider, amount_rub=amount_rub,
                     phone=phone, raw=d,
                 )
+                self._results_by_id[idempotency_key] = result
+                return result
             except (TimeoutError, ConnectionError) as e:
                 last_exc = e
                 await asyncio.sleep(0.5 * attempt)
@@ -160,7 +177,7 @@ class SbpClient:
 class CardTransferClient:
     def __init__(self, config: SbpConfig):
         self.config = config
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     async def _http(self) -> httpx.AsyncClient:
         if self._client is None:

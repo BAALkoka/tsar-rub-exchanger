@@ -1,6 +1,5 @@
 """Метаданные токенов серии ЦАРЬ. v3.1 — 3 TON + 4 BSC = 7 токенов."""
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -88,7 +87,7 @@ TOKENS = {
 DEFAULT_TOKEN = TOKENS["BAAL_RA"]
 
 
-def get_token(slug: str) -> Optional[TokenMeta]:
+def get_token(slug: str) -> TokenMeta | None:
     return TOKENS.get(slug)
 
 
@@ -100,14 +99,14 @@ def list_by_network(network: str) -> list[TokenMeta]:
     return [t for t in TOKENS.values() if t.network == network]
 
 
-def find_by_master(master: str) -> Optional[TokenMeta]:
+def find_by_master(master: str) -> TokenMeta | None:
     for t in TOKENS.values():
         if t.master == master:
             return t
     return None
 
 
-def find_by_pool(pool: str) -> Optional[TokenMeta]:
+def find_by_pool(pool: str) -> TokenMeta | None:
     for t in TOKENS.values():
         if t.pool == pool:
             return t

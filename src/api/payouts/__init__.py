@@ -6,9 +6,9 @@
   - средний (5 000 – 50 000 ₽, упрощённый KYC)
   - крупный (> 50 000 ₽, через менеджера)
 """
-from .service import PayoutService, PayoutResult
 from .models import Payout, PayoutMethod, PayoutStatus
 from .sbp import SbpClient, SbpError
+from .service import PayoutResult, PayoutService
 
 __all__ = [
     "PayoutService",

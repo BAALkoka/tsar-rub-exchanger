@@ -4,24 +4,49 @@
 Банки CARD: Tochka, Tinkoff, Sberbank, VTB, Alfa, PSB, Raiffeisen, Gazprombank.
 """
 from __future__ import annotations
+
 import logging
 import re
 import uuid
-from typing import Optional
 
 from .config import (
-    MIN_PAYOUT_TSAR, SERVICE_FEE_PCT, SBP_FEE_PCT,
-    KYC_THRESHOLD_RUB, USD_RUB_FALLBACK,
+    KYC_THRESHOLD_RUB,
+    MIN_PAYOUT_TSAR,
+    SBP_FEE_PCT,
+    SERVICE_FEE_PCT,
+    USD_RUB_FALLBACK,
 )
-from .models import Payout, PayoutMethod, PayoutStatus, PayoutResult
-from .price_feed import PriceFeed
+from .models import Payout, PayoutMethod, PayoutResult, PayoutStatus
 from .p2p import P2PClient, P2PError
-from .sbp import SbpClient, SbpConfig, CardTransferClient
+from .price_feed import PriceFeed
+from .sbp import CardTransferClient, SbpClient
 from .ton_payout import TonPayout
 
 logger = logging.getLogger(__name__)
 
 PHONE_RE = re.compile(r"^\+7\d{10}$")
+
+
+def normalize_phone(raw: str) -> str | None:
+    """Приводит номер к единому виду +7XXXXXXXXXX.
+
+    Понимает форматы: +79001234567, 89001234567, 9001234567, 7 900 123 45 67,
+    +7 (900) 123-45-67. Возвращает None, если номер невалиден.
+    """
+    if not raw:
+        return None
+    d = re.sub(r"[^\d+]", "", str(raw))
+    if d.startswith("+"):
+        d = d[1:]
+    if d.startswith("8") and len(d) == 11:
+        d = "7" + d[1:]
+    elif d.startswith("7") and len(d) == 11:
+        pass
+    elif len(d) == 10:
+        d = "7" + d
+    else:
+        return None
+    return f"+{d}" if PHONE_RE.match(f"+{d}") else None
 CARD_RU_RE = re.compile(r"^\d{16}$")
 CARD_FOREIGN_RE = re.compile(r"^\d{13,19}$")
 IBAN_RE = re.compile(r"^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$")
@@ -29,7 +54,7 @@ IBAN_RE = re.compile(r"^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$")
 
 def detect_recipient_kind(recipient: str) -> PayoutMethod:
     r = recipient.strip().replace(" ", "").replace("-", "")
-    if PHONE_RE.match(r):
+    if PHONE_RE.match(r) or normalize_phone(r):
         return PayoutMethod.SBP
     if CARD_RU_RE.match(r):
         return PayoutMethod.CARD_RU
@@ -46,9 +71,9 @@ def detect_recipient_kind(recipient: str) -> PayoutMethod:
 class PayoutService:
     def __init__(
         self, *, p2p_client: P2PClient, price_feed: PriceFeed,
-        sbp_client: Optional[SbpClient] = None,
-        card_client: Optional[CardTransferClient] = None,
-        ton_payout: Optional[TonPayout] = None,
+        sbp_client: SbpClient | None = None,
+        card_client: CardTransferClient | None = None,
+        ton_payout: TonPayout | None = None,
     ):
         self.p2p = p2p_client
         self.price = price_feed
@@ -78,7 +103,9 @@ class PayoutService:
             best_ad = await self.p2p.best_buy_ad(fiat="RUB")
             if best_ad:
                 if price_usdt > 0:
-                    p2p_rate = best_ad.price / price_usdt
+                    # best_ad.price — это ₽/USDT, а price_usdt — USDT на 1 ЦАРЬ.
+                    # Значит 1 ЦАРЬ = price_usdt USDT × (₽/USDT) → rate в ₽ за ЦАРЬ.
+                    p2p_rate = best_ad.price * price_usdt
                     if p2p_rate < rate:
                         rate = p2p_rate
                 stages.append(f"p2p.best:{best_ad.nickname}@{best_ad.price:.2f}")
@@ -98,7 +125,7 @@ class PayoutService:
 
     async def execute(
         self, *, user_id: int, tsar_amount: float, recipient: str,
-        method: Optional[PayoutMethod] = None,
+        method: PayoutMethod | None = None,
     ) -> PayoutResult:
         if method is None:
             try:
@@ -218,26 +245,16 @@ class PayoutService:
                 raise ValueError("Нужна карта: 16 цифр (МИР/Visa/MC)")
         elif method == PayoutMethod.CARD_FOREIGN:
             d = recipient.strip().replace(" ", "")
-            if d.isdigit() and 13 <= len(d) <= 19:
-                pass
-            elif re.match(r"^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$", d):
+            if d.isdigit() and 13 <= len(d) <= 19 or re.match(r"^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$", d):
                 pass
             else:
                 raise ValueError("Нужна карта: 13-19 цифр или IBAN")
 
     @staticmethod
-    def _norm_phone(phone: str) -> Optional[str]:
-        p = phone.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-        if p.startswith("+7") and len(p) == 12 and p[2:].isdigit():
-            return p
-        if p.startswith("8") and len(p) == 11 and p[1:].isdigit():
-            return "+7" + p[1:]
-        if p.startswith("7") and len(p) == 11 and p[1:].isdigit():
-            return "+" + p
-        # 10 цифр без префикса: 9001234567 -> +79001234567
-        if len(p) == 10 and p.isdigit():
-            return "+7" + p
-        return None
+    @staticmethod
+    def _norm_phone(raw: str) -> str | None:
+        """Нормализует телефон к +7XXXXXXXXXX (или None)."""
+        return normalize_phone(raw)
 
     def _err(self, tsar_amount, recipient, amount_rub, error, stages=None):
         return PayoutResult(
