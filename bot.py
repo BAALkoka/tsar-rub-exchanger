@@ -77,7 +77,7 @@ list_tokens = _tokens.list_tokens
 list_by_network = _tokens.list_by_network
 short_address = _tokens.short_address
 
-BOT_VERSION = "2026-11-15-028"
+BOT_VERSION = "2026-11-15-029"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 SITE_URL = os.getenv("SITE_URL", "https://tsar-ru-lt87ahb9.agent.mira.tg/").strip()
 GAME_URL = os.getenv("GAME_URL", "https://tsar-game-lt87ahb9.agent.mira.tg/").strip()
@@ -90,6 +90,17 @@ ICRYPTO_CHECK_PATH = os.getenv("ICRYPTO_CHECK_PATH", "/app/createCheck").strip()
 ICRYPTO_BOT_USERNAME = os.getenv("ICRYPTO_BOT_USERNAME", "iCryptoCheckBot").strip()
 GAME_TOKEN_SLUG = os.getenv("GAME_TOKEN_SLUG", "BAAL_RA").strip()
 GAME_MIN_WITHDRAW = int(os.getenv("GAME_MIN_WITHDRAW", "100"))
+# Курс игровой монеты в USD и комиссия конвертации монет -> токен
+GAME_COIN_USD = float(os.getenv("GAME_COIN_USD", "0.0001"))
+GAME_CONVERT_FEE_PCT = float(os.getenv("GAME_CONVERT_FEE_PCT", "3"))
+# Цари, на которые можно обменять игровые монеты (TON)
+GAME_TOKEN_SLUGS = [
+    s.strip()
+    for s in os.getenv("GAME_TOKEN_SLUGS", "BAAL_RA,BLIZNETSY,CROWN").split(",")
+    if s.strip()
+]
+GECKO_API = os.getenv("GECKO_API", "https://api.geckoterminal.com/api/v2").strip().rstrip("/")
+GECKO_NETWORK = os.getenv("GECKO_NETWORK", "ton").strip()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("tsar.bot")
@@ -495,18 +506,91 @@ async def cmd_all3(message: Message) -> None:
 # ---------------- вывод монет из игры (iCryptoCheck) ----------------
 class GameWithdrawFSM(StatesGroup):
     amount = State()
+    token = State()
     confirm = State()
 
 
+_PRICE_CACHE: dict[str, tuple[float, float]] = {}  # master -> (price, ts)
+PRICE_CACHE_TTL = float(os.getenv("PRICE_CACHE_TTL", "60"))
+
+
+async def token_price_usd(master: str) -> float:
+    """Цена токена в USD по GeckoTerminal.
+
+    Кэш на PRICE_CACHE_TTL секунд (GeckoTerminal режет по rate-limit),
+    запасной источник — цена базового токена в пуле.
+    """
+    import time
+    import httpx
+    cached = _PRICE_CACHE.get(master)
+    if cached and (time.time() - cached[1]) < PRICE_CACHE_TTL:
+        return cached[0]
+    headers = {"accept": "application/json", "User-Agent": "tsar-bot/1.0"}
+    async with httpx.AsyncClient(timeout=10.0, headers=headers) as c:
+        for url, field in (
+            (f"{GECKO_API}/networks/{GECKO_NETWORK}/tokens/{master}", "price_usd"),
+            (f"{GECKO_API}/networks/{GECKO_NETWORK}/tokens/{master}/pools", "base_token_price_usd"),
+        ):
+            try:
+                r = await c.get(url)
+                if r.status_code != 200:
+                    continue
+                d = r.json()
+                if field == "price_usd":
+                    px = (d.get("data", {}).get("attributes", {}) or {}).get(field)
+                else:
+                    px = None
+                    for p in d.get("data", []) or []:
+                        at = p.get("attributes", {}) or {}
+                        if at.get("reserve_in_usd") and float(at["reserve_in_usd"]) > 50:
+                            px = at.get(field)
+                            break
+                if px:
+                    price = float(px)
+                    _PRICE_CACHE[master] = (price, time.time())
+                    return price
+            except Exception as e:
+                log.warning("price %s failed: %s", master, e)
+    if cached:
+        return cached[0]
+    return 0.0
+
+
+def _game_tokens() -> list:
+    """Цари, доступные для обмена игровых монет (с реальным master-адресом)."""
+    out = []
+    for slug in GAME_TOKEN_SLUGS:
+        t = get_token(slug)
+        if t is not None and t.network == "ton":
+            out.append(t)
+    return out
+
+
 def _icrypto_ready() -> bool:
-    return bool(ICRYPTO_API_KEY and ICRYPTO_TOKEN_ADDRESS)
+    return bool(ICRYPTO_API_KEY)
 
 
-async def icrypto_create_check(amount: float, user_id: int) -> tuple[bool, str]:
+async def convert_coins_to_tokens(coins: float, target) -> tuple[float, float, float]:
+    """Переводит игровые монеты в токены цели.
+
+    coins -> USD (GAME_COIN_USD) -> токены по цене цели (GeckoTerminal),
+    за вычетом комиссии GAME_CONVERT_FEE_PCT.
+    Возвращает (tokens, price, fee_pct).
+    """
+    price = await token_price_usd(target.master)
+    if price <= 0:
+        return 0.0, 0.0, GAME_CONVERT_FEE_PCT
+    usd = coins * GAME_COIN_USD
+    gross = usd / price
+    fee = gross * (GAME_CONVERT_FEE_PCT / 100.0)
+    return gross - fee, price, GAME_CONVERT_FEE_PCT
+
+
+async def icrypto_create_check(amount: float, token_address: str, user_id: int) -> tuple[bool, str]:
     """Создаёт iCrypto-чек на amount токенов. Возвращает (ok, текст/ссылка)."""
     if not _icrypto_ready():
         return False, (
-            "Интеграция с iCryptoCheck не настроена: нет ICRYPTO_API_KEY / ICRYPTO_TOKEN_ADDRESS.\n"
+            "Интеграция с iCryptoCheck не настроена: нет ICRYPTO_API_KEY.\n"
             f"Напиши оператору: @{SUPPORT_USERNAME}"
         )
     try:
@@ -514,7 +598,7 @@ async def icrypto_create_check(amount: float, user_id: int) -> tuple[bool, str]:
     except Exception:
         return False, "В боте нет HTTP-клиента (httpx)."
     payload = {
-        "token": ICRYPTO_TOKEN_ADDRESS,
+        "token": token_address,
         "amount": str(amount),
         "pin_to_user_id": user_id,
     }
@@ -561,7 +645,6 @@ async def cmd_game_withdraw(message: Message, state: FSMContext) -> None:
             f"🎮 Продолжай играть в «Царь в Подземелье»!",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🎮 Играть", web_app=WebAppInfo(url=GAME_URL))],
-                [InlineKeyboardButton(text="📜 Рекорды", callback_data="noop")],
             ]),
         )
         return
@@ -594,11 +677,49 @@ async def game_withdraw_amount(message: Message, state: FSMContext) -> None:
         await message.answer(f"На балансе только <b>{balance:,}</b> монет.")
         return
     await state.update_data(amount=amount, balance=balance)
-    await state.set_state(GameWithdrawFSM.confirm)
+    await state.set_state(GameWithdrawFSM.token)
     await message.answer(
-        "📋 <b>Подтверди вывод</b>\n\n"
-        f"👑 Выводим: <b>{amount:,}</b> монет\n"
-        f"🏦 Останется на балансе: <b>{balance - amount:,}</b> монет\n"
+        "👑 <b>На кого обменяем монеты?</b>\n\n"
+        "Выбери царя — бот посчитает, сколько токенов ты получишь.\n"
+        f"Курс монеты: <b>${GAME_COIN_USD}</b> · комиссия обмена: <b>{GAME_CONVERT_FEE_PCT}%</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text=f"{t.emoji} {t.name}", callback_data=f"gwt:{t.slug}")
+                for t in _game_tokens()
+            ],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="gw:cancel")],
+        ]),
+    )
+
+
+@router.callback_query(GameWithdrawFSM.token, F.data.startswith("gwt:"))
+async def game_withdraw_pick_token(c: CallbackQuery, state: FSMContext) -> None:
+    slug = (c.data or "").split(":", 1)[-1]
+    t = get_token(slug)
+    if t is None or t.network != "ton":
+        await c.answer("Царь не найден")
+        return
+    data = await state.get_data()
+    coins = int(data.get("amount", 0))
+    tokens, price, fee = await convert_coins_to_tokens(coins, t)
+    if tokens <= 0:
+        await c.message.answer(
+            "⚠️ Не удалось получить курс царя — попробуй позже.\n\nМонеты не списаны.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔁 Повторить", callback_data="gw:menu")],
+            ]),
+        )
+        await c.answer("Нет курса")
+        return
+    await state.update_data(token_slug=t.slug, tokens=round(tokens, 6), price=price)
+    await state.set_state(GameWithdrawFSM.confirm)
+    await c.message.answer(
+        "📋 <b>Подтверди обмен</b>\n\n"
+        f"🪙 Игровых монет: <b>{coins:,}</b>\n"
+        f"👑 Царь: <b>{t.name}</b> ({t.symbol})\n"
+        f"💵 Курс царя: <b>${price:.8f}</b>\n"
+        f"🎁 Ты получишь: <b>{round(tokens, 6):,} {t.symbol}</b>\n"
+        f"📉 Комиссия обмена: <b>{fee}%</b>\n"
         f"🔗 Чек придёт от @{ICRYPTO_BOT_USERNAME}\n\n"
         "Монеты списываются только после успешного создания чека.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -606,34 +727,42 @@ async def game_withdraw_amount(message: Message, state: FSMContext) -> None:
             [InlineKeyboardButton(text="❌ Отмена", callback_data="gw:cancel")],
         ]),
     )
+    await c.answer()
 
 
 @router.callback_query(GameWithdrawFSM.confirm, F.data == "gw:ok")
 async def game_withdraw_ok(c: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
-    amount = int(data.get("amount", 0))
+    coins = int(data.get("amount", 0))
+    slug = str(data.get("token_slug") or GAME_TOKEN_SLUG)
+    tokens = float(data.get("tokens", 0))
+    t = get_token(slug)
+    if t is None:
+        await c.message.answer("⚠️ Царь не найден — монеты не списаны.")
+        await c.answer("Ошибка")
+        return
     uid = str(c.from_user.id if c.from_user else 0)
     await c.answer("Создаю чек…")
-    ok, result = await icrypto_create_check(amount, int(uid))
+    ok, result = await icrypto_create_check(tokens, t.master, int(uid))
     if not ok:
         await c.message.answer(
             "⚠️ <b>Вывод не выполнен</b>\n\n" + result + "\n\n"
             "Монеты остались на балансе — попробуй ещё раз.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔁 Повторить", callback_data="noop")],
-                [InlineKeyboardButton(text="📜 Рекорды", callback_data="noop")],
+                [InlineKeyboardButton(text="🔁 Повторить", callback_data="gw:menu")],
             ]),
         )
         await state.clear()
         return
-    # списываем только выведенную часть, остаток остаётся
     p = player(uid)
-    p["coins"] = max(0, int(p.get("coins", 0)) - amount)
-    p["withdrawn"] = int(p.get("withdrawn", 0)) + amount
+    p["coins"] = max(0, int(p.get("coins", 0)) - coins)
+    p["withdrawn"] = int(p.get("withdrawn", 0)) + coins
     save_players()
     await c.message.answer(
         "✅ <b>Чек создан!</b>\n\n"
-        f"👑 Выведено: <b>{amount:,}</b> монет\n"
+        f"👑 Царь: <b>{t.name}</b>\n"
+        f"💰 Получено: <b>{tokens:,} {t.symbol}</b>\n"
+        f"🪙 Списано монет: <b>{coins:,}</b>\n"
         f"🏦 Остаток на балансе: <b>{p['coins']:,}</b> монет\n\n"
         f"🔗 Активируй чек здесь:\n{result}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -739,15 +868,28 @@ async def game_score(message: Message) -> None:
 
 
 @router.callback_query(F.data == "gw:menu")
-async def game_withdraw_menu(c: CallbackQuery) -> None:
+async def game_withdraw_menu(c: CallbackQuery, state: FSMContext) -> None:
     uid = str(c.from_user.id if c.from_user else 0)
     p = player(uid)
     coins = int(p.get("coins", 0))
+    if coins < GAME_MIN_WITHDRAW:
+        await c.message.answer(
+            f"👑 Накоплено <b>{coins:,}</b> монет.\n"
+            f"Для вывода нужно минимум <b>{GAME_MIN_WITHDRAW:,}</b>.\n\n"
+            "🎮 Продолжай играть в «Царь в Подземелье»!",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🎮 Играть", web_app=WebAppInfo(url=GAME_URL))],
+            ]),
+        )
+        await c.answer()
+        return
+    await state.set_state(GameWithdrawFSM.amount)
+    await state.update_data(balance=coins)
     await c.message.answer(
         "💸 <b>Вывод игровых монет</b>\n\n"
-        f"👑 Накоплено: <b>{coins:,}</b> монет\n"
-        f"Минимум: <b>{GAME_MIN_WITHDRAW:,}</b> монет\n\n"
-        "Пришли число монет для вывода — или нажми «Все».",
+        f"👑 Твой баланс: <b>{coins:,}</b> монет\n"
+        f"Минимум для вывода: <b>{GAME_MIN_WITHDRAW:,}</b>\n\n"
+        "Сколько монет выводим? Пришли число (можно часть — остальное останется на балансе).",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"Вывести все ({coins:,})", callback_data="gw:all")],
             [InlineKeyboardButton(text="🎮 Играть", web_app=WebAppInfo(url=GAME_URL))],
@@ -764,19 +906,24 @@ async def game_withdraw_all(c: CallbackQuery, state: FSMContext) -> None:
     if coins < GAME_MIN_WITHDRAW:
         await c.message.answer(
             f"👑 Накоплено <b>{coins:,}</b> монет — мало для вывода.\n"
-            f"Нужно минимум <b>{GAME_MIN_WITHDRAW:,}</b>."
+            f"Нужно минимум <b>{GAME_MIN_WITHDRAW:,}</b>.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🎮 Играть", web_app=WebAppInfo(url=GAME_URL))],
+            ]),
         )
         await c.answer()
         return
-    await state.set_state(GameWithdrawFSM.confirm)
+    await state.set_state(GameWithdrawFSM.token)
     await state.update_data(amount=coins, balance=coins)
     await c.message.answer(
-        "📋 <b>Подтверди вывод</b>\n\n"
-        f"👑 Выводим: <b>{coins:,}</b> монет\n"
-        f"🏦 Останется на балансе: <b>0</b> монет\n"
-        f"🔗 Чек придёт от @{ICRYPTO_BOT_USERNAME}",
+        "👑 <b>На кого обменяем монеты?</b>\n\n"
+        f"Выводим <b>{coins:,}</b> монет. Выбери царя — бот посчитает, сколько токенов ты получишь.\n"
+        f"Курс монеты: <b>${GAME_COIN_USD}</b> · комиссия обмена: <b>{GAME_CONVERT_FEE_PCT}%</b>",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Вывести", callback_data="gw:ok")],
+            [
+                InlineKeyboardButton(text=f"{t.emoji} {t.name}", callback_data=f"gwt:{t.slug}")
+                for t in _game_tokens()
+            ],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="gw:cancel")],
         ]),
     )
