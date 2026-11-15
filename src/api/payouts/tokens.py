@@ -39,6 +39,10 @@ POOL_BSC_3_CLMM = "0xc8f0bf58c185133fb125962eda12b814cf8935d4f45cbc8d67f4a83ce88
 POOL_BSC_4_WBNB = "0x99705be5b0b1d27b6fabfe4a4613cd5b34f3658d"
 
 
+# === TON: 4-й царь (WEB3_RA) — пул RA_BAAL / STON на Ston.fi ===
+TSAR_MASTER_WEB3_RA = "EQBrCYk8nNCwiEarsC9pgQ0LxvwFGKrJwGhHgarlvyMf0Ppp"
+POOL_WEB3_RA_STON  = "EQAhglgqdh7WbPhrGiBYP5Jt8ivW1BeXi4KQzYjLoA8hDamP"
+
 TOKENS = {
     "BAAL_RA": TokenMeta(
         slug="BAAL_RA", name="Царь BAAL_RA", symbol="ЦАРЬ", network="ton",
@@ -57,6 +61,12 @@ TOKENS = {
         master=TSAR_MASTER_CROWN, pool=POOL_CROWN_TON, pool_label="TON",
         decimals=9, min_tsar=250_000, description="С коронкой — DeDust TON",
         emoji="👑", gecko_url="https://www.geckoterminal.com/ton/pools/" + POOL_CROWN_TON,
+    ),
+    "WEB3_RA": TokenMeta(
+        slug="WEB3_RA", name="Царь WEB3_RA", symbol="RA_BAAL", network="ton",
+        master=TSAR_MASTER_WEB3_RA, pool=POOL_WEB3_RA_STON, pool_label="STON",
+        decimals=9, min_tsar=250_000, description="WEB3_RA — Ston.fi RA_BAAL/STON",
+        emoji="🪬", gecko_url="https://www.geckoterminal.com/ton/pools/" + POOL_WEB3_RA_STON,
     ),
     "BSC_TSAR_1": TokenMeta(
         slug="BSC_TSAR_1", name="ЦАРЬ BSC #1", symbol="ЦАРЬ", network="bsc",
