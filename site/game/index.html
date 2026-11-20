@@ -73,13 +73,21 @@ if(tg){try{tg.ready();tg.expand();}catch(e){}}
 var total=0;
 try{total=parseInt(localStorage.getItem('tsarGameTotal')||'0',10)||0;}catch(e){}
 function saveTotal(){try{localStorage.setItem('tsarGameTotal',String(total));}catch(e){}}
-function paintTotal(){var el=document.getElementById('tot');if(el)el.textContent=total;}
+function paintTotal(){var el=document.getElementById('tot');if(el)el.textContent=total;var mc=document.getElementById('coins');if(mc)mc.textContent=total;}
 paintTotal();
 var tgBtn=document.getElementById('tgbtn');
 var wdBtn=document.getElementById('wdbtn');
 if(tg){tgBtn.style.display='block';wdBtn.style.display='block';
   tgBtn.addEventListener('click',function(){try{tg.sendData('coins:'+total);}catch(e){}});
-  wdBtn.addEventListener('click',function(){try{tg.sendData('withdraw:'+total);}catch(e){}});}
+  wdBtn.addEventListener('click',function(){
+    try{
+      tg.sendData('withdraw:'+total);
+      total=0;saveTotal();paintTotal();
+      var mc=document.getElementById('coins');if(mc)mc.textContent=0;
+      wdBtn.textContent='✅ Отправлено царю';
+      setTimeout(function(){wdBtn.textContent='💸 Вывести монеты';},2500);
+    }catch(e){}
+  });}
 
 // ---- AUDIO ----
 var ac=null;
@@ -139,7 +147,7 @@ function drawTsar(x,y,bobT,scale){
 
 // ---- world gen
 function reset(){
-  coins=[];rocks=[];parts=[];score=0;dist=0;speed=0.16;tsar.lane=1;tsar.x=laneX[1];bob=0;shake=0;spawnZ=-60;
+  coins=[];rocks=[];parts=[];score=0;dist=0;document.getElementById('coins').textContent=total;speed=0.16;tsar.lane=1;tsar.x=laneX[1];bob=0;shake=0;spawnZ=-60;
   layout();
   for(var i=0;i<40;i++) spawnChunk();
 }
@@ -291,7 +299,7 @@ function loop(ts){
       var cy=H*0.30+(c.y-dist)*(H*0.66/220);
       if(Math.abs(c.x-tsar.x)<26&&Math.abs(cy-(H*0.62))<34){
         c.got=true;score++;
-        document.getElementById('coins').textContent=score;
+        document.getElementById('coins').textContent=total+score;
         sCoin();burst(c.x,cy);
       }
     }

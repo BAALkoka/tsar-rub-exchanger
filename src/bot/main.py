@@ -36,6 +36,7 @@ from aiogram.types import (
     Message,
     CallbackQuery,
     WebAppInfo,
+    WebAppData,
     ReplyKeyboardMarkup,
 )
 
@@ -134,6 +135,14 @@ def save_players() -> None:
 
 def player(uid: str) -> dict:
     return PLAYERS.setdefault(uid, {"coins": 0, "best": 0, "runs": 0})
+
+
+
+def _reply_sender(message: Message | WebAppData):
+    """Ответчик для Message или WebAppData (у WebAppData нет .answer)."""
+    if isinstance(message, WebAppData):
+        return bot
+    return message
 
 
 # ---------------- клавиатуры ----------------
@@ -634,12 +643,13 @@ async def icrypto_create_check(amount: float, token_address: str, user_id: int) 
 
 @router.message(F.text == "💸 Вывести монеты")
 @router.message(Command("withdraw_game", "cashout"))
-async def cmd_game_withdraw(message: Message, state: FSMContext) -> None:
+async def cmd_game_withdraw(message: Message | WebAppData, state: FSMContext) -> None:
     uid = str(message.from_user.id if message.from_user else 0)
+    sender = _reply_sender(message)
     p = player(uid)
     coins = int(p.get("coins", 0))
     if coins < GAME_MIN_WITHDRAW:
-        await message.answer(
+        await sender.send_message(message.chat.id if hasattr(message, 'chat') else message.from_user.id, 
             f"👑 Накоплено <b>{coins:,}</b> монет.\n"
             f"Для вывода нужно минимум <b>{GAME_MIN_WITHDRAW:,}</b>.\n\n"
             f"🎮 Продолжай играть в «Царь в Подземелье»!",
@@ -650,7 +660,7 @@ async def cmd_game_withdraw(message: Message, state: FSMContext) -> None:
         return
     await state.set_state(GameWithdrawFSM.amount)
     await state.update_data(balance=coins)
-    await message.answer(
+    await sender.send_message(message.chat.id if hasattr(message, 'chat') else message.from_user.id, 
         "💸 <b>Вывод игровых монет</b>\n\n"
         f"👑 Твой баланс: <b>{coins:,}</b> монет\n"
         f"Минимум для вывода: <b>{GAME_MIN_WITHDRAW:,}</b>\n\n"
@@ -827,33 +837,52 @@ async def cmd_records(message: Message) -> None:
 
 
 # ---------------- приём счёта из WebApp ----------------
-@router.message(F.text.func(lambda t: bool(t) and t.startswith("withdraw:")))
-async def game_withdraw_request(message: Message, state: FSMContext) -> None:
-    await cmd_game_withdraw(message, state)
+def _game_sync(uid: str, coins: int, *, count_run: bool = True) -> tuple[dict, int]:
+    """Синхронизирует накопленный счёт из игры с балансом игрока.
 
-
-@router.message(F.text.func(lambda t: bool(t) and t.startswith("coins:")))
-async def game_score(message: Message) -> None:
-    raw = (message.text or "").split(":", 1)[1].strip()
-    try:
-        coins = max(0, int(raw))
-    except ValueError:
-        coins = 0
-    uid = str(message.from_user.id if message.from_user else 0)
+    Игра присылает НАКОПЛЕННЫЙ итог, а не прибавку за забег, поэтому
+    начисляем только разницу: монеты не задваиваются и баланс не обнуляется
+    между забегами.
+    """
     p = player(uid)
-    # Игра присылает НАКОПЛЕННЫЙ итог, а не прибавку за забег:
-    # считаем только разницу, чтобы монеты не начислялись дважды
-    # и баланс не обнулялся между забегами.
     last_total = int(p.get("last_total", 0))
     delta = coins - last_total
     if delta < 0:
         delta = coins  # новый игрок или сброс — начисляем как есть
     p["last_total"] = coins
     p["coins"] = int(p.get("coins", 0)) + delta
-    p["runs"] += 1
-    if coins > p["best"]:
+    if count_run:
+        p["runs"] += 1
+    if coins > int(p.get("best", 0)):
         p["best"] = coins
     save_players()
+    return p, delta
+
+
+def _parse_game_amount(data: str) -> int:
+    """Достаёт число монет из 'coins:123' / 'withdraw:123'."""
+    raw = (data or "").split(":", 1)[-1].strip()
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 0
+
+
+@router.web_app_data(F.data.startswith("withdraw:"))
+async def game_withdraw_request(message: WebAppData, state: FSMContext) -> None:
+    """Кнопка «Вывести монеты» в игре: сначала синхронизируем счёт, потом вывод."""
+    coins = _parse_game_amount(message.web_app_data.data or "")
+    uid = str(message.from_user.id if message.from_user else 0)
+    _game_sync(uid, coins, count_run=False)
+    await cmd_game_withdraw(message, state)
+
+
+@router.web_app_data(F.data.startswith("coins:"))
+async def game_score(message: WebAppData) -> None:
+    """Игра присылает итог забега — начисляем разницу и показываем баланс."""
+    coins = _parse_game_amount(message.web_app_data.data or "")
+    uid = str(message.from_user.id if message.from_user else 0)
+    p, delta = _game_sync(uid, coins)
     await message.answer(
         f"👑 <b>Царь принял твой счёт!</b>\n\n"
         f"🪙 За этот забег: <b>+{delta:,}</b> монет\n"
