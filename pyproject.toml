@@ -15,3 +15,6 @@ warn_unused_ignores = true
 
 [tool.ruff.lint.per-file-ignores]
 "src/api/payouts/tests/*" = ["S101"]
+"bot.py" = ["E402"]
+"src/bot/main.py" = ["E402"]
+"tests/test_e2e.py" = ["E402"]
