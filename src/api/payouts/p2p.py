@@ -158,14 +158,16 @@ class P2PClient:
         self, crypto: str, fiat: str, side: str, page_size: int
     ) -> list[P2PAd]:
         url = f"{self.base_url}{self.path}"
-        params = {
+        params: dict[str, str | int] = {
             "crypto": crypto,
             "fiat": fiat,
             "side": side,
             "pageSize": page_size,
             "lang": "ru",
         }
-        headers = {"X-API-Key": self.api_key}
+        headers: dict[str, str] = {}
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
         r = await self._client.get(url, params=params, headers=headers)
         if r.status_code != 200:
             raise P2PError(f"WalletBot HTTP {r.status_code}")
@@ -264,9 +266,14 @@ class P2PClient:
 
         if self.is_configured:
             try:
+                order_headers: dict[str, str] = {
+                    "Idempotency-Key": idempotency_key or str(uuid.uuid4()),
+                }
+                if self.api_key:
+                    order_headers["X-API-Key"] = self.api_key
                 r = await self._client.post(
                     f"{self.base_url}/p2p/integration-api/v1/order/create",
-                    headers={"X-API-Key": self.api_key, "Idempotency-Key": idempotency_key or str(uuid.uuid4())},
+                    headers=order_headers,
                     json={"adId": ad_id, "amount": usdt_amount, "fiat": fiat},
                 )
                 if r.status_code not in (200, 201):
