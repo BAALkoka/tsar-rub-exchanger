@@ -66,7 +66,9 @@ async def list_pools():
     out = []
     for t in list_tokens():
         try:
-            q = await feeds[t.slug].quote(1)
+            feed = feeds[t.slug]
+            price_usdt = await feed.get_price_usdt()
+            usd_rub = await feed.get_usd_rub()
             out.append({
                 "token": t.slug,
                 "name": t.name,
@@ -75,11 +77,11 @@ async def list_pools():
                 "master": t.master,
                 "pool": t.pool,
                 "pool_label": t.pool_label,
-                "tsar_price_usd": q.tsar_price_usd if q.ok else 0,
-                "tsar_price_rub": q.rate if q.ok else 0,
-                "ok": q.ok,
-                "source": q.source,
-                "error": q.error if not q.ok else None,
+                "tsar_price_usd": price_usdt,
+                "tsar_price_rub": price_usdt * usd_rub,
+                "ok": True,
+                "source": "live",
+                "error": None,
             })
         except Exception as e:
             out.append({"token": t.slug, "ok": False, "error": str(e)})
@@ -91,20 +93,41 @@ async def quote(req: QuoteRequest):
     token = get_token(req.token)
     if not token:
         raise HTTPException(404, f"unknown token: {req.token}")
-    q = await feeds[token.slug].quote(req.tsar_amount)
+    feed = feeds[token.slug]
+    try:
+        price_usdt = await feed.get_price_usdt()
+        usd_rub = await feed.get_usd_rub()
+    except Exception as e:
+        return QuoteResponse(
+            ok=False,
+            token=token.slug,
+            token_label=f"{token.emoji} {token.name}",
+            pool=token.pool,
+            pool_label=token.pool_label,
+            tsar_amount=req.tsar_amount,
+            tsar_price_usd=0,
+            usd_amount=0,
+            rub_amount=0,
+            usd_rub=0,
+            source="error",
+            error=str(e),
+        )
+    rate = price_usdt * usd_rub
+    usd_amount = req.tsar_amount * price_usdt
+    rub_amount = req.tsar_amount * rate
     return QuoteResponse(
-        ok=q.ok,
+        ok=True,
         token=token.slug,
         token_label=f"{token.emoji} {token.name}",
         pool=token.pool,
         pool_label=token.pool_label,
         tsar_amount=req.tsar_amount,
-        tsar_price_usd=q.tsar_price_usd,
-        usd_amount=q.usd_amount,
-        rub_amount=q.rub_amount,
-        usd_rub=q.rate_used,
-        source=q.source,
-        error=q.error,
+        tsar_price_usd=price_usdt,
+        usd_amount=usd_amount,
+        rub_amount=rub_amount,
+        usd_rub=usd_rub,
+        source="live",
+        error=None,
     )
 
 
@@ -135,7 +158,7 @@ async def create_payout(req: PayoutRequest):
             400,
             f"min amount for {token.slug}: {token.min_tsar}",
         )
-    result = await _service(token.slug).payout(
+    result = await _service(token.slug).execute(
         user_id=req.user_id,
         tsar_amount=req.tsar_amount,
         recipient=req.recipient,
@@ -143,13 +166,13 @@ async def create_payout(req: PayoutRequest):
     )
     if not result.ok:
         return PayoutResponse(ok=False, error=result.error)
-    ad = result.p2p_ad
+    ad = result.p2p_ad or {}
     return PayoutResponse(
         ok=True,
         payout_id=result.payout.id,
         amount_rub=result.payout.amount_rub,
-        p2p_partner=ad.nickname if ad else None,
-        p2p_price=ad.price if ad else 0,
+        p2p_partner=str(ad.get("nickname")) if ad.get("nickname") else None,
+        p2p_price=float(ad.get("price", 0) or 0),
     )
 
 
