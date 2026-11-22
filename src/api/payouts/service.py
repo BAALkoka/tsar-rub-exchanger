@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from typing import Any
 
 from .config import (
     KYC_THRESHOLD_RUB,
@@ -160,12 +161,14 @@ class PayoutService:
                     payout=self._mk(user_id, tsar_amount, recipient, method, 0, q.payout.rate, PayoutStatus.FAILED),
                     error=f"P2P недоступен: {e}", stages=stages + ["p2p.error"],
                 )
-        stages.append(f"p2p.ok:{best_ad.get('nickname','?')}@{best_ad.get('price',0):.2f}")
+        ad_data: dict[str, Any] = best_ad or {}
+        stages.append(f"p2p.ok:{ad_data.get('nickname','?')}@{ad_data.get('price',0):.2f}")
 
         if self.ton:
             try:
                 tx = await self.ton.send_tsar(amount=tsar_amount)
-                stages.append(f"ton.ok:{tx[:10]}")
+                tx_hash = getattr(tx, "tx_hash", "") or ""
+                stages.append(f"ton.ok:{tx_hash[:10]}")
             except Exception as e:
                 return PayoutResult(
                     ok=False,
@@ -176,7 +179,7 @@ class PayoutService:
         if self.p2p.is_configured:
             try:
                 await self.p2p.create_order(
-                    ad_id=best_ad.get("id", ""),
+                    ad_id=str(ad_data.get("id", "")),
                     usdt_amount=q.payout.amount_tzar, fiat="RUB",
                 )
                 stages.append("p2p.order.ok")
@@ -190,13 +193,13 @@ class PayoutService:
 
         if method == PayoutMethod.SBP and self.sbp:
             try:
-                res = await self.sbp.payout(
+                sbp_res = await self.sbp.payout(
                     amount_rub=q.payout.amount_rub, phone=recipient,
                     idempotency_key=str(q.payout.id),
                 )
-                external_id = res.external_id
-                final_status = PayoutStatus.SENT if res.status == "sent" else PayoutStatus.PROCESSING
-                stages.append(f"sbp.ok:{res.provider}:{external_id[:18]}")
+                external_id = sbp_res.external_id
+                final_status = PayoutStatus.SENT if sbp_res.status == "sent" else PayoutStatus.PROCESSING
+                stages.append(f"sbp.ok:{sbp_res.provider}:{str(external_id)[:18]}")
             except Exception as e:
                 return PayoutResult(
                     ok=False,
@@ -205,13 +208,13 @@ class PayoutService:
                 )
         elif method in (PayoutMethod.CARD_RU, PayoutMethod.CARD_FOREIGN) and self.card:
             try:
-                res = await self.card.transfer(
+                card_res = await self.card.transfer(
                     amount_rub=q.payout.amount_rub, card=recipient,
                     idempotency_key=str(q.payout.id),
                 )
-                external_id = res.external_id
-                final_status = PayoutStatus.SENT if res.status == "sent" else PayoutStatus.PROCESSING
-                stages.append(f"card.ok:{res.provider}:{external_id[:18]}")
+                external_id = card_res.external_id
+                final_status = PayoutStatus.SENT if card_res.status == "sent" else PayoutStatus.PROCESSING
+                stages.append(f"card.ok:{card_res.provider}:{str(external_id)[:18]}")
             except Exception as e:
                 return PayoutResult(
                     ok=False,
@@ -250,7 +253,6 @@ class PayoutService:
             else:
                 raise ValueError("Нужна карта: 13-19 цифр или IBAN")
 
-    @staticmethod
     @staticmethod
     def _norm_phone(raw: str) -> str | None:
         """Нормализует телефон к +7XXXXXXXXXX (или None)."""
