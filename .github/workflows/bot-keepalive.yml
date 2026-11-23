@@ -37,9 +37,9 @@ jobs:
           ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
           P2P_API_KEY: ${{ secrets.P2P_API_KEY }}
         run: |
-          cd $GITHUB_WORKSPACE
+          cd $GITHUB_WORKSPACE/src
           while true; do
             echo "[$(date)] starting bot..."
-            python -m bot.main 2>&1 | tee -a bot.log || echo "[$(date)] bot crashed, restarting in 3s"
+            python -m bot.main 2>&1 | tee -a $GITHUB_WORKSPACE/bot.log || echo "[$(date)] bot crashed, restarting in 3s"
             sleep 3
           done

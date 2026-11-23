@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+    startCommand: python -m bot.main
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
@@ -22,3 +22,5 @@ services:
         value: "mock"
       - key: PYTHONUNBUFFERED
         value: "1"
+      - key: PYTHONPATH
+        value: "src"

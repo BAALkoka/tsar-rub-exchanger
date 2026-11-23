@@ -869,19 +869,19 @@ def _parse_game_amount(data: str) -> int:
         return 0
 
 
-@router.web_app_data(F.data.startswith("withdraw:"))
-async def game_withdraw_request(message: WebAppData, state: FSMContext) -> None:
+@router.message(F.web_app_data.data.startswith("withdraw:"))
+async def game_withdraw_request(message: Message, state: FSMContext) -> None:
     """Кнопка «Вывести монеты» в игре: сначала синхронизируем счёт, потом вывод."""
-    coins = _parse_game_amount(message.web_app_data.data or "")
+    coins = _parse_game_amount(message.web_app.data if message.web_app else "")
     uid = str(message.from_user.id if message.from_user else 0)
     _game_sync(uid, coins, count_run=False)
     await cmd_game_withdraw(message, state)
 
 
-@router.web_app_data(F.data.startswith("coins:"))
-async def game_score(message: WebAppData) -> None:
+@router.message(F.web_app_data.data.startswith("coins:"))
+async def game_score(message: Message) -> None:
     """Игра присылает итог забега — начисляем разницу и показываем баланс."""
-    coins = _parse_game_amount(message.web_app_data.data or "")
+    coins = _parse_game_amount(message.web_app.data if message.web_app else "")
     uid = str(message.from_user.id if message.from_user else 0)
     p, delta = _game_sync(uid, coins)
     await message.answer(
