@@ -10,7 +10,7 @@
 
 ## Шаг 2 — Добавить секреты
 Render покажет форму с переменными `sync: false`:
-- `TELEGRAM_BOT_TOKEN` → `6637597430:AAHTkc2hJH6PUzAAkBoBeKVduHEg2rKNHrc`
+- `TELEGRAM_BOT_TOKEN` → `<TELEGRAM_BOT_TOKEN>`
 - `BOT_WEBHOOK_URL` → оставь пустым (мы используем polling)
 
 Или добавь через dashboard → Environment → Add Secret.

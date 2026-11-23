@@ -13,7 +13,7 @@ Workflow `.github/workflows/bot-keepalive.yml` запускает бота на 
 
 ## Секрет
 В Settings → Secrets and variables → Actions → New repository secret:
-- TELEGRAM_BOT_TOKEN = 6637597430:AAHTkc2hJH6PUzAAkBoBeKVduHEg2rKNHrc
+- TELEGRAM_BOT_TOKEN = <TELEGRAM_BOT_TOKEN>
 
 ## Как запустить
 Автоматически по расписанию (каждые 30 мин) ИЛИ вручную:

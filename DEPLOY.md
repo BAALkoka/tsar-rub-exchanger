@@ -4,7 +4,7 @@
 curl -L https://fly.io/install.sh | sh
 fly auth signup
 fly launch --no-deploy
-fly secrets set TELEGRAM_BOT_TOKEN="6637597430:AAHTkc2hJH6PUzAAkBoBeKVduHEg2rKNHrc"
+fly secrets set TELEGRAM_BOT_TOKEN="<TELEGRAM_BOT_TOKEN>"
 fly deploy
 fly status
 ```
