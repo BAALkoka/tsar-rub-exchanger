@@ -1,0 +1,77 @@
+name: tsar-bot-smoke-test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/bot/**"
+      - "bot.py"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONPATH: src
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install aiogram==3.13.1 httpx==0.27.0 pydantic==2.9.0 fastapi==0.115.0
+
+      - name: Import bot handlers
+        run: |
+          python - <<'PY'
+          import ast, pathlib
+          src = pathlib.Path('src/bot/main.py').read_text()
+          ast.parse(src)
+          handlers = pathlib.Path('src/bot/handlers')
+          names = sorted(p.name for p in handlers.glob('*.py'))
+          print('handlers:', names)
+          assert 'start.py' in names, 'start handler missing'
+          print('OK: bot module parses, start handler present')
+          PY
+
+      - name: Smoke: Telegram getMe + getUpdates
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ADMIN_CHAT_ID: ${{ secrets.ADMIN_CHAT_ID }}
+        run: |
+          python - <<'PY'
+          import os, sys, json, asyncio, httpx
+          token = os.environ.get('TELEGRAM_BOT_TOKEN')
+          if not token:
+              print('SMOKE FAIL: TELEGRAM_BOT_TOKEN secret is empty')
+              sys.exit(1)
+          api = f'https://api.telegram.org/bot{token}'
+          r = httpx.get(f'{api}/getMe', timeout=20)
+          me = r.json()
+          print('getMe:', json.dumps(me.get('result', {}), ensure_ascii=False)[:400])
+          if not me.get('ok'):
+              print('SMOKE FAIL: bot token rejected by Telegram')
+              sys.exit(1)
+          username = me['result'].get('username')
+          ru = httpx.get(f'{api}/getUpdates', params={'timeout': 0, 'limit': 5}, timeout=20).json()
+          print('getUpdates ok=', ru.get('ok'), 'updates=', len(ru.get('result', [])))
+          admin = os.environ.get('ADMIN_CHAT_ID')
+          if admin:
+              s = httpx.post(f'{api}/sendMessage',
+                             json={'chat_id': admin, 'text': '✅ smoke: бот ЦАРЬ на связи, /start готов.'},
+                             timeout=20).json()
+              print('sendMessage ok=', s.get('ok'))
+          print('SMOKE OK: bot', username, 'reachable')
+          PY
