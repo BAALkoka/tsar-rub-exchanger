@@ -22,7 +22,9 @@ for _p in (ROOT, ROOT / "src", ROOT.parent):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from aiogram import Bot, Dispatcher, Router, F
+import importlib.util
+
+from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
@@ -30,17 +32,15 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
+    CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
     Message,
-    CallbackQuery,
-    WebAppInfo,
-    WebAppData,
     ReplyKeyboardMarkup,
+    WebAppData,
+    WebAppInfo,
 )
-
-import importlib.util
 
 # Каталог с модулями api.payouts — ищем в нескольких местах,
 # чтобы бот одинаково запускался из корня, из src/ и как модуль bot.main.
@@ -530,6 +530,7 @@ async def token_price_usd(master: str) -> float:
     запасной источник — цена базового токена в пуле.
     """
     import time
+
     import httpx
     cached = _PRICE_CACHE.get(master)
     if cached and (time.time() - cached[1]) < PRICE_CACHE_TTL:
@@ -649,7 +650,7 @@ async def cmd_game_withdraw(message: Message | WebAppData, state: FSMContext) ->
     p = player(uid)
     coins = int(p.get("coins", 0))
     if coins < GAME_MIN_WITHDRAW:
-        await sender.send_message(message.chat.id if hasattr(message, 'chat') else message.from_user.id, 
+        await sender.send_message(message.chat.id if hasattr(message, 'chat') else message.from_user.id,
             f"👑 Накоплено <b>{coins:,}</b> монет.\n"
             f"Для вывода нужно минимум <b>{GAME_MIN_WITHDRAW:,}</b>.\n\n"
             f"🎮 Продолжай играть в «Царь в Подземелье»!",
@@ -660,7 +661,7 @@ async def cmd_game_withdraw(message: Message | WebAppData, state: FSMContext) ->
         return
     await state.set_state(GameWithdrawFSM.amount)
     await state.update_data(balance=coins)
-    await sender.send_message(message.chat.id if hasattr(message, 'chat') else message.from_user.id, 
+    await sender.send_message(message.chat.id if hasattr(message, 'chat') else message.from_user.id,
         "💸 <b>Вывод игровых монет</b>\n\n"
         f"👑 Твой баланс: <b>{coins:,}</b> монет\n"
         f"Минимум для вывода: <b>{GAME_MIN_WITHDRAW:,}</b>\n\n"

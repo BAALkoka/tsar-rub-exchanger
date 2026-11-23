@@ -12,7 +12,7 @@ class BotConfig:
     log_chat_id: int | None = None
 
     @classmethod
-    def from_env(cls) -> "BotConfig":
+    def from_env(cls) -> BotConfig:
         token = os.environ.get("BOT_TOKEN")
         if not token:
             raise RuntimeError("BOT_TOKEN is not set")

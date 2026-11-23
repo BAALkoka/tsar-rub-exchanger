@@ -22,7 +22,9 @@ for _p in (ROOT, ROOT / "src", ROOT.parent):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from aiogram import Bot, Dispatcher, Router, F
+import importlib.util
+
+from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
@@ -30,16 +32,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
+    CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
     Message,
-    CallbackQuery,
-    WebAppInfo,
     ReplyKeyboardMarkup,
+    WebAppInfo,
 )
-
-import importlib.util
 
 # Каталог с модулями api.payouts — ищем в нескольких местах,
 # чтобы бот одинаково запускался из корня, из src/ и как модуль bot.main.
@@ -521,6 +521,7 @@ async def token_price_usd(master: str) -> float:
     запасной источник — цена базового токена в пуле.
     """
     import time
+
     import httpx
     cached = _PRICE_CACHE.get(master)
     if cached and (time.time() - cached[1]) < PRICE_CACHE_TTL:

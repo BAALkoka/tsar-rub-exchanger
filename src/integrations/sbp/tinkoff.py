@@ -4,12 +4,13 @@
   TINKOFF_TERMINAL_KEY, TINKOFF_PASSWORD, TINKOFF_API_URL (опц.)
 """
 from __future__ import annotations
+
 import hashlib
 import logging
 import os
 import time
 from dataclasses import dataclass
-from typing import Optional
+
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -18,10 +19,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PayoutResult:
     success: bool
-    payment_id: Optional[str] = None
+    payment_id: str | None = None
     status: str = "unknown"
-    error: Optional[str] = None
-    raw: Optional[dict] = None
+    error: str | None = None
+    raw: dict | None = None
 
 
 class TinkoffSBPClient:
