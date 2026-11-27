@@ -71,12 +71,24 @@ def _load(name: str):
     return mod
 
 
+def _load_bot_module(name: str):
+    """Загружаем модуль из каталога src/bot напрямую по файлу."""
+    path = ROOT / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"tsarbot_{name}", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load {path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 _tokens = _load("tokens")
 TOKENS = _tokens.TOKENS
 get_token = _tokens.get_token
 list_tokens = _tokens.list_tokens
 list_by_network = _tokens.list_by_network
 short_address = _tokens.short_address
+_market = _load_bot_module("tsar_market")
 
 BOT_VERSION = "2026-11-15-029"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
@@ -151,9 +163,10 @@ def main_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="👑 Токены"), KeyboardButton(text="💰 Курс")],
-            [KeyboardButton(text="💸 Продать"), KeyboardButton(text="🪙 Конвертер")],
-            [KeyboardButton(text="🎮 Царь в Подземелье"), KeyboardButton(text="📜 Рекорды")],
-            [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="♻️ /start")],
+            [KeyboardButton(text="💸 Продать"), KeyboardButton(text="📈 Рынок ЦАРЬ")],
+            [KeyboardButton(text="🪙 Конвертер"), KeyboardButton(text="🎮 Царь в Подземелье")],
+            [KeyboardButton(text="📜 Рекорды"), KeyboardButton(text="❓ Помощь")],
+            [KeyboardButton(text="♻️ /start")],
         ],
         resize_keyboard=True,
     )
@@ -394,6 +407,34 @@ async def cmd_quote(message: Message) -> None:
         else:
             line += f"резерв {fallback.get(t.slug, 0):.10g} $ / шт."
         await message.answer(line + "\n<code>" + short_address(t.master) + "</code>")
+
+
+@router.message(F.text == "📈 Рынок ЦАРЬ")
+@router.message(Command("market"))
+async def cmd_market(message: Message) -> None:
+    """Рынок серии ЦАРЬ: живая цена, ликвидность и 24ч по DEX-парам."""
+    await message.answer("📈 <b>Рынок ЦАРЬ</b> <i>v" + BOT_VERSION + "</i>\n\nСобираю котировки…")
+    rows = []
+    buttons = []
+    for t in list_tokens():
+        try:
+            mk = await _market.market_for(t)
+        except Exception as e:
+            log.debug("market %s: %s", t.slug, e)
+            continue
+        rows.append(_market.format_market(mk))
+        if mk.best is not None and mk.best.url:
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"{t.emoji} {t.symbol} · {mk.best.dex}",
+                    url=mk.best.url,
+                )
+            ])
+    if not rows:
+        await message.answer("⚠️ Не удалось получить котировки. Попробуй позже.")
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
+    await message.answer("\n".join(rows), reply_markup=kb)
 
 
 @router.message(F.text == "📊 Калькулятор")
